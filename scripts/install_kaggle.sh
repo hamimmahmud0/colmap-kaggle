@@ -14,6 +14,7 @@ env DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recomme
   blender=3.0.1+dfsg-7 \
   colmap=3.7-2 \
   libimage-exiftool-perl=12.40+dfsg-1 \
+  python3-numpy=1:1.21.5-1ubuntu22.04.1 \
   rclone \
   ca-certificates curl git cmake ninja-build build-essential python3-venv \
   libpng-dev libjpeg-dev libtiff-dev libtbb-dev \
