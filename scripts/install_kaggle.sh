@@ -60,6 +60,7 @@ if [[ "$build_colmap" -eq 1 ]]; then
   cmake -S "$colmap_source" -B "$colmap_source/build" -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CUDA_ARCHITECTURES=75 \
+    -DOPENGL_gl_LIBRARY=/usr/local/nvidia/lib64/libGL.so \
     -DCUDA_ENABLED=ON \
     -DGUI_ENABLED=OFF \
     -DTESTS_ENABLED=OFF
