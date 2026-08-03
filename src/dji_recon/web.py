@@ -156,7 +156,7 @@ def create_app(config_path: Path) -> FastAPI:
         return HTMLResponse(page("setup.html"))
 
     @app.post("/setup")
-    async def setup(password: str = Form(...), confirm: str = Form(...)) -> RedirectResponse | HTMLResponse:
+    async def setup(password: str = Form(...), confirm: str = Form(...)):
         if state.setup_complete:
             return HTMLResponse("Not found", 404)
         if password != confirm or len(password) < 10:
@@ -171,7 +171,7 @@ def create_app(config_path: Path) -> FastAPI:
         return HTMLResponse(page("login.html"))
 
     @app.post("/login")
-    async def login(request: Request, password: str = Form(...)) -> RedirectResponse | HTMLResponse:
+    async def login(request: Request, password: str = Form(...)):
         if state.check_password(password):
             request.session.clear()
             request.session["authenticated"] = True

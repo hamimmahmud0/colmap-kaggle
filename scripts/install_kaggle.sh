@@ -15,12 +15,20 @@ $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends 
   colmap=3.7-2 \
   libimage-exiftool-perl=12.40+dfsg-1 \
   rclone \
-  ca-certificates curl git cmake build-essential \
+  ca-certificates curl git cmake build-essential python3-venv \
   libpng-dev libjpeg-dev libtiff-dev libtbb-dev
 
-python3 -m pip install --disable-pip-version-check -e '.[test]'
+if [[ -d /kaggle/working ]]; then
+  runtime_root=/kaggle/working
+else
+  runtime_root="$PWD/.runtime"
+  mkdir -p "$runtime_root"
+fi
+venv_path="${DJI_RECON_VENV:-$runtime_root/dji-recon-venv}"
+python3 -m venv "$venv_path"
+"$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
 
-dependency_root="${DJI_RECON_DEPENDENCY_ROOT:-/kaggle/working/.dji-recon-dependencies}"
+dependency_root="${DJI_RECON_DEPENDENCY_ROOT:-$runtime_root/.dji-recon-dependencies}"
 mkdir -p "$dependency_root"
 
 frp_version=0.64.0
@@ -62,7 +70,7 @@ if ! command -v texrecon >/dev/null; then
 fi
 
 echo "Installed versions:"
-python3 -c 'import dji_recon; print("dji-recon", dji_recon.__version__)'
+"$venv_path/bin/python" -c 'import dji_recon; print("dji-recon", dji_recon.__version__)'
 colmap -h 2>&1 | head -n 2
 blender --version | head -n 1
 exiftool -ver
@@ -70,3 +78,5 @@ rclone version | head -n 1
 frpc --version
 mega-version 2>/dev/null | head -n 1 || true
 texrecon --help 2>&1 | head -n 1 || true
+echo "Python CLI: $venv_path/bin/dji-recon"
+echo "Web UI:    $venv_path/bin/dji-recon-web"

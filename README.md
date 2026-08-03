@@ -18,7 +18,9 @@ remote is explicitly provisioned with every reconstruction dependency.
    `/kaggle/working/colmap-kaggle`, then change to the repository root.
 3. Open and run `notebooks/dji_reconstruction.ipynb` from top to bottom.
    The installer pins the tested Ubuntu 22.04 COLMAP, Blender, ExifTool,
-   MVS-Texturing source revision, Python packages, and FRP client.
+   MVS-Texturing source revision, Python packages, and FRP client. Python
+   dependencies are isolated in `/kaggle/working/dji-recon-venv` so they do not
+   downgrade or conflict with Kaggle's preinstalled notebook packages.
 4. The final cell prints a public `/setup` URL. Open it and create a password
    of at least ten characters. No bootstrap token is used. This is an accepted
    first-run security tradeoff: anyone who reaches the page first can claim
@@ -70,9 +72,10 @@ Install the Python project, edit a copy of `configs/default.yaml` without
 putting secrets in it, and run:
 
 ```bash
-python3 -m pip install -e .
-dji-recon --config configs/default.yaml --print-resources
-dji-recon --config configs/default.yaml
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/dji-recon --config configs/default.yaml --print-resources
+.venv/bin/dji-recon --config configs/default.yaml
 ```
 
 Resume or isolate stages with:
