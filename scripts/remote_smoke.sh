@@ -3,10 +3,18 @@ set -euo pipefail
 repo_dir="${1:-/kaggle/working/colmap-kaggle}"
 cd "$repo_dir"
 venv_path=/kaggle/working/dji-recon-smoke-venv
-if [[ ! -x "$venv_path/bin/python" ]]; then
-    python3 -m venv "$venv_path"
+if [[ ! -x "$venv_path/bin/pytest" ]]; then
+    rm -rf "$venv_path"
+    if command -v uv >/dev/null; then
+        uv venv --python python3 "$venv_path"
+        uv pip install --python "$venv_path/bin/python" -e '.[test]'
+    else
+        python3 -m venv "$venv_path"
+        "$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
+    fi
+else
+    "$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
 fi
-"$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
 "$venv_path/bin/pytest"
 smoke_root=$(mktemp -d /kaggle/working/dji-recon-smoke-XXXXXX)
 trap 'rm -rf "$smoke_root"' EXIT
