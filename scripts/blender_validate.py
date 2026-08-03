@@ -19,8 +19,10 @@ def args() -> tuple[Path, dict, Path]:
 def clear() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    for image in list(bpy.data.images):
-        bpy.data.images.remove(image)
+    for collection in (bpy.data.meshes, bpy.data.materials, bpy.data.images):
+        for block in list(collection):
+            if block.users == 0:
+                collection.remove(block)
 
 
 def import_asset(path: Path) -> None:
@@ -43,14 +45,19 @@ def inspect(path: Path, profile: dict) -> dict:
     materials = {slot.material for obj in meshes for slot in obj.material_slots if slot.material}
     triangles = 0
     finite = True
-    world_points = []
+    bounds_min = [math.inf, math.inf, math.inf]
+    bounds_max = [-math.inf, -math.inf, -math.inf]
     for obj in meshes:
         obj.data.calc_loop_triangles()
         triangles += len(obj.data.loop_triangles)
         for vertex in obj.data.vertices:
             finite = finite and all(math.isfinite(value) for value in vertex.co)
         finite = finite and all(math.isfinite(value) for row in obj.matrix_world for value in row)
-        world_points.extend(obj.matrix_world @ vertex.co for vertex in obj.data.vertices)
+        for vertex in obj.data.vertices:
+            point = obj.matrix_world @ vertex.co
+            for axis in range(3):
+                bounds_min[axis] = min(bounds_min[axis], point[axis])
+                bounds_max[axis] = max(bounds_max[axis], point[axis])
     textures = [image for image in bpy.data.images if image.type == "IMAGE" and image.size[0] > 0]
     dimensions = [[int(image.size[0]), int(image.size[1])] for image in textures]
     if not meshes:
@@ -68,10 +75,12 @@ def inspect(path: Path, profile: dict) -> dict:
     if not finite:
         errors.append("non-finite transform or geometry")
     bounds = None
-    if world_points:
-        minimum = [min(point[axis] for point in world_points) for axis in range(3)]
-        maximum = [max(point[axis] for point in world_points) for axis in range(3)]
-        bounds = {"min": minimum, "max": maximum, "size": [maximum[axis] - minimum[axis] for axis in range(3)]}
+    if all(math.isfinite(value) for value in (*bounds_min, *bounds_max)):
+        bounds = {
+            "min": bounds_min,
+            "max": bounds_max,
+            "size": [bounds_max[axis] - bounds_min[axis] for axis in range(3)],
+        }
     return {
         "path": str(path), "valid": not errors, "errors": errors, "meshes": len(meshes),
         "materials": len(materials), "triangles": triangles, "textures": len(textures), "texture_dimensions": dimensions,
