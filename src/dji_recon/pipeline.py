@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
+import struct
 import subprocess
 import tempfile
 import threading
@@ -415,8 +417,6 @@ def _sparse(ctx: PipelineContext) -> list[Path]:
     models = [item.parent for item in output.rglob("images.bin")]
     if not models:
         raise PipelineError("COLMAP mapper did not produce a sparse model")
-    import struct
-
     def count(path: Path) -> int:
         with path.open("rb") as stream:
             header = stream.read(8)
@@ -463,13 +463,21 @@ def _gps_references(ctx: PipelineContext) -> tuple[Path | None, int]:
         try:
             data = json.loads(sidecar.read_text(encoding="utf-8"))
             exif = data.get("exif", {})
-            lat, lon = exif.get("GPSLatitude"), exif.get("GPSLongitude")
-            if lat is None or lon is None:
+            lat = float(exif.get("GPSLatitude"))
+            lon = float(exif.get("GPSLongitude"))
+            if not math.isfinite(lat) or not math.isfinite(lon):
+                continue
+            if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
                 continue
             relative = sidecar.relative_to(ctx.path("capture")).with_suffix(".tif")
-            altitude = exif.get("GPSAltitude", 0.0)
-            lines.append(f"{relative.as_posix()} {lat} {lon} {altitude}")
-        except (OSError, json.JSONDecodeError):
+            try:
+                altitude = float(exif.get("GPSAltitude", 0.0))
+            except (TypeError, ValueError):
+                altitude = 0.0
+            if not math.isfinite(altitude):
+                altitude = 0.0
+            lines.append(f"{relative.as_posix()} {lat:.12g} {lon:.12g} {altitude:.12g}")
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
             continue
     if len(lines) < 3:
         return None, len(lines)
@@ -478,26 +486,84 @@ def _gps_references(ctx: PipelineContext) -> tuple[Path | None, int]:
     return path, len(lines)
 
 
+def _aligned_model_is_finite(model: Path) -> bool:
+    """Reject models that COLMAP wrote successfully with invalid camera poses."""
+    images = model / "images.bin"
+    if not images.is_file():
+        return False
+    try:
+        with images.open("rb") as stream:
+            count_data = stream.read(8)
+            if len(count_data) != 8 or struct.unpack("<Q", count_data)[0] == 0:
+                return False
+            image_count = struct.unpack("<Q", count_data)[0]
+            for _ in range(image_count):
+                pose = stream.read(64)
+                if len(pose) != 64:
+                    return False
+                unpacked = struct.unpack("<i7di", pose)
+                quaternion = unpacked[1:5]
+                translation = unpacked[5:8]
+                if not all(math.isfinite(value) for value in (*quaternion, *translation)):
+                    return False
+                if math.sqrt(sum(value * value for value in quaternion)) < 1e-8:
+                    return False
+                while True:
+                    character = stream.read(1)
+                    if not character:
+                        return False
+                    if character == b"\0":
+                        break
+                point_count_data = stream.read(8)
+                if len(point_count_data) != 8:
+                    return False
+                point_count = struct.unpack("<Q", point_count_data)[0]
+                stream.seek(24 * point_count, os.SEEK_CUR)
+    except (OSError, struct.error):
+        return False
+    return True
+
+
+def _use_arbitrary_alignment(
+    ctx: PipelineContext,
+    aligned: Path,
+    report: Path,
+    gps_count: int,
+    warning: str,
+) -> list[Path]:
+    ctx.log(f"{warning}; retaining arbitrary COLMAP scale", "warning")
+    if aligned.exists():
+        shutil.rmtree(aligned)
+    shutil.copytree(_selected_sparse(ctx), aligned)
+    atomic_write_json(
+        report,
+        {"scale": "arbitrary", "gps_reference_count": gps_count, "warning": warning},
+    )
+    return [aligned, report]
+
+
 def _align(ctx: PipelineContext) -> list[Path]:
     references, count = _gps_references(ctx)
     report = ctx.meta_dir / "coordinate-system.json"
     aligned = ctx.path("aligned")
     if not references:
-        ctx.log(f"only {count} GPS-tagged images; retaining arbitrary COLMAP scale", "warning")
-        if aligned.exists():
-            shutil.rmtree(aligned)
-        shutil.copytree(_selected_sparse(ctx), aligned)
-        atomic_write_json(report, {"scale": "arbitrary", "gps_reference_count": count, "warning": "insufficient GPS references"})
-        return [aligned, report]
+        return _use_arbitrary_alignment(ctx, aligned, report, count, f"only {count} valid GPS-tagged images")
+    if aligned.exists():
+        shutil.rmtree(aligned)
     aligned.mkdir(parents=True, exist_ok=True)
-    _colmap(
-        ctx,
-        [
-            "model_aligner", "--input_path", str(_selected_sparse(ctx)), "--output_path", str(aligned),
-            "--ref_images_path", str(references), "--ref_is_gps", "1", "--alignment_type", "enu",
-            "--alignment_max_error", "5.0",
-        ],
-    )
+    try:
+        _colmap(
+            ctx,
+            [
+                "model_aligner", "--input_path", str(_selected_sparse(ctx)), "--output_path", str(aligned),
+                "--ref_images_path", str(references), "--ref_is_gps", "1", "--alignment_type", "enu",
+                "--alignment_max_error", "5.0",
+            ],
+        )
+    except CommandError:
+        return _use_arbitrary_alignment(ctx, aligned, report, count, "GPS model alignment failed")
+    if not _aligned_model_is_finite(aligned):
+        return _use_arbitrary_alignment(ctx, aligned, report, count, "GPS alignment produced invalid camera poses")
     atomic_write_json(
         report,
         {
@@ -511,6 +577,24 @@ def _align(ctx: PipelineContext) -> list[Path]:
     return [aligned, report]
 
 
+def _ply_vertex_count(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    try:
+        with path.open("rb") as stream:
+            for _ in range(1024):
+                line = stream.readline(4096)
+                if not line:
+                    break
+                if line.startswith(b"element vertex "):
+                    return int(line.split()[2])
+                if line.strip() == b"end_header":
+                    break
+    except (OSError, ValueError, IndexError):
+        return 0
+    return 0
+
+
 def _dense(ctx: PipelineContext) -> list[Path]:
     dense = ctx.path("dense")
     _colmap(ctx, ["image_undistorter", "--image_path", str(ctx.path("working")), "--input_path", str(ctx.path("aligned")), "--output_path", str(dense), "--output_type", "COLMAP", "--max_image_size", str(ctx.config["colmap"].get("dense_max_image_size", 3200))])
@@ -519,19 +603,30 @@ def _dense(ctx: PipelineContext) -> list[Path]:
             "COLMAP dense PatchMatch requires a CUDA-enabled build; this COLMAP cannot complete dense reconstruction on CPU"
         )
     _colmap(ctx, ["patch_match_stereo", "--workspace_path", str(dense), "--workspace_format", "COLMAP", "--PatchMatchStereo.gpu_index", "-1" if _gpu_enabled(ctx) else "-1"])
+    depth_maps = list((dense / "stereo" / "depth_maps").glob("*.geometric.bin"))
+    minimum_depth_maps = int(ctx.config["colmap"].get("min_dense_images", 3))
+    if len(depth_maps) < minimum_depth_maps:
+        raise PipelineError(
+            f"dense stereo produced {len(depth_maps)} geometric depth maps; required >= {minimum_depth_maps}"
+        )
     fused = dense / "fused.ply"
     _colmap(ctx, ["stereo_fusion", "--workspace_path", str(dense), "--workspace_format", "COLMAP", "--input_type", "geometric", "--output_path", str(fused)])
-    if not fused.exists():
-        raise PipelineError("dense fusion output is missing")
+    fused_points = _ply_vertex_count(fused)
+    minimum_points = int(ctx.config["colmap"].get("min_dense_points", 100))
+    if fused_points < minimum_points:
+        raise PipelineError(f"dense fusion produced {fused_points} points; required >= {minimum_points}")
     return [dense, fused]
 
 
 def _mesh(ctx: PipelineContext) -> list[Path]:
     mesh = ctx.path("mesh")
     mesh.parent.mkdir(parents=True, exist_ok=True)
+    fused_points = _ply_vertex_count(ctx.path("dense") / "fused.ply")
+    if fused_points <= 0:
+        raise PipelineError("cannot mesh an empty or invalid dense point cloud")
     _colmap(ctx, ["poisson_mesher", "--input_path", str(ctx.path("dense") / "fused.ply"), "--output_path", str(mesh), "--PoissonMeshing.trim", str(ctx.config["mesh"].get("poisson_trim", 7))])
-    if not mesh.exists():
-        raise PipelineError("mesh output is missing")
+    if _ply_vertex_count(mesh) <= 0:
+        raise PipelineError("mesh output is missing or contains no vertices")
     return [mesh]
 
 

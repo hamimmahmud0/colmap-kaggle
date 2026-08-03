@@ -38,6 +38,8 @@ colmap:
   min_registered_images: 3
   min_registered_ratio: 0.5
   min_sparse_points: 100
+  min_dense_images: 3
+  min_dense_points: 100
   options: {}
 
 mesh:
