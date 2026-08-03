@@ -15,7 +15,7 @@ env DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recomme
   colmap=3.7-2 \
   libimage-exiftool-perl=12.40+dfsg-1 \
   python3-numpy=1:1.21.5-1ubuntu22.04.1 \
-  rclone \
+  rclone=1.53.3-4ubuntu1.22.04.5 \
   ca-certificates curl git cmake ninja-build build-essential python3-venv \
   libpng-dev libjpeg-dev libtiff-dev libtbb-dev \
   libboost-program-options-dev libboost-graph-dev libboost-system-dev \

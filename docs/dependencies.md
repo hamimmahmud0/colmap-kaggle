@@ -7,10 +7,12 @@ versions at runtime.
 |---|---|---|---|
 | COLMAP | source `3.11.1` commit `682ea9ac4020a143047758739259b3ff04dabe8d` with CUDA compute 7.5; Ubuntu `3.7-2` CPU fallback | SfM, dense stereo, fusion, meshing and GPS alignment | BSD-3-Clause |
 | Blender | Ubuntu `3.0.1+dfsg-7` | decimation, GLB/OBJ export and independent headless validation | GPL-2.0-or-later |
+| NumPy for Blender | Ubuntu `1:1.21.5-1ubuntu22.04.1` | required by Blender 3's glTF/GLB exporter | BSD-3-Clause |
 | MVS-Texturing / texrecon | commit `f3374298ac959cb5afe47a14e4d35d2ac7fbdbb1` | UV/material and image-based texture generation | BSD-3-Clause |
 | ExifTool | Ubuntu `12.40+dfsg-1` | GPS, altitude and orientation extraction | Artistic-1.0 or GPL-1.0-or-later |
-| rclone | effective Ubuntu package recorded at install | ephemeral MEGA and Google Drive upload | MIT |
+| rclone | Ubuntu `1.53.3-4ubuntu1.22.04.5` | ephemeral MEGA and Google Drive upload | MIT |
 | frp client | `0.64.0`, archive SHA-256 pinned | primary public Web UI transport | Apache-2.0 |
+| cloudflared | `2026.7.3`, binary SHA-256 pinned | public Web UI fallback only when FRP cannot become ready | Apache-2.0 |
 | MEGAcmd | `2.5.2-1.1`, package SHA-256 pinned | key-bearing MEGA folder download over interactive stdin | MEGA terms / SDK license |
 | rawpy | `0.24.0` | deterministic LibRaw DNG decoding/demosaicing | MIT; LibRaw LGPL-2.1/CDDL |
 | tifffile | `2025.2.18` | validated 16-bit TIFF output | BSD-3-Clause |
