@@ -366,6 +366,9 @@ def _gpu_enabled(ctx: PipelineContext) -> bool:
     if not resources["gpus"]:
         ctx.log("no NVIDIA GPU detected; attempting CPU reconstruction", "warning")
         return False
+    if not resources.get("colmap_cuda_enabled"):
+        ctx.log("NVIDIA GPU detected, but COLMAP was built without CUDA; using supported CPU stages", "warning")
+        return False
     return True
 
 
@@ -481,6 +484,10 @@ def _align(ctx: PipelineContext) -> list[Path]:
 def _dense(ctx: PipelineContext) -> list[Path]:
     dense = ctx.path("dense")
     _colmap(ctx, ["image_undistorter", "--image_path", str(ctx.path("working")), "--input_path", str(ctx.path("aligned")), "--output_path", str(dense), "--output_type", "COLMAP", "--max_image_size", str(ctx.config["colmap"].get("dense_max_image_size", 3200))])
+    if not _gpu_enabled(ctx):
+        raise PipelineError(
+            "COLMAP dense PatchMatch requires a CUDA-enabled build; this COLMAP cannot complete dense reconstruction on CPU"
+        )
     _colmap(ctx, ["patch_match_stereo", "--workspace_path", str(dense), "--workspace_format", "COLMAP", "--PatchMatchStereo.gpu_index", "-1" if _gpu_enabled(ctx) else "-1"])
     fused = dense / "fused.ply"
     _colmap(ctx, ["stereo_fusion", "--workspace_path", str(dense), "--workspace_format", "COLMAP", "--input_type", "geometric", "--output_path", str(fused)])

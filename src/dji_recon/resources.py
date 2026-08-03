@@ -51,6 +51,11 @@ def detect_resources(workspace: Path) -> dict[str, Any]:
             "frpc": ["--version"],
         }.items()
     }
+    colmap_cuda = False
+    if shutil.which("colmap"):
+        result = subprocess.run(["colmap", "-h"], capture_output=True, text=True, check=False, timeout=15)
+        description = f"{result.stdout}\n{result.stderr}"
+        colmap_cuda = "with CUDA" in description and "without CUDA" not in description
     return {
         "cpu_count_logical": psutil.cpu_count(logical=True),
         "cpu_count_physical": psutil.cpu_count(logical=False),
@@ -59,6 +64,7 @@ def detect_resources(workspace: Path) -> dict[str, Any]:
         "disk_free_bytes": disk.free,
         "disk_total_bytes": disk.total,
         "gpus": gpus,
+        "colmap_cuda_enabled": colmap_cuda,
         "tools": tools,
     }
 

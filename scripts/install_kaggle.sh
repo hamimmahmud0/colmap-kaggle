@@ -15,8 +15,12 @@ env DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recomme
   colmap=3.7-2 \
   libimage-exiftool-perl=12.40+dfsg-1 \
   rclone \
-  ca-certificates curl git cmake build-essential python3-venv \
-  libpng-dev libjpeg-dev libtiff-dev libtbb-dev
+  ca-certificates curl git cmake ninja-build build-essential python3-venv \
+  libpng-dev libjpeg-dev libtiff-dev libtbb-dev \
+  libboost-program-options-dev libboost-graph-dev libboost-system-dev \
+  libeigen3-dev libfreeimage-dev libmetis-dev libgoogle-glog-dev \
+  libgtest-dev libsqlite3-dev libglew-dev qtbase5-dev libqt5opengl5-dev \
+  libcgal-dev libceres-dev libsuitesparse-dev
 
 if [[ -d /kaggle/working ]]; then
   runtime_root=/kaggle/working
@@ -36,6 +40,32 @@ fi
 
 dependency_root="${DJI_RECON_DEPENDENCY_ROOT:-$runtime_root/.dji-recon-dependencies}"
 mkdir -p "$dependency_root"
+
+# Distribution COLMAP packages omit CUDA. Build the pinned release for T4
+# (compute capability 7.5) whenever nvcc is available; keep apt COLMAP as the
+# documented CPU-only fallback.
+colmap_commit=682ea9ac4020a143047758739259b3ff04dabe8d
+colmap_source="$dependency_root/colmap"
+build_colmap=0
+if command -v nvcc >/dev/null && ! /usr/local/bin/colmap -h 2>&1 | grep -q 'with CUDA'; then
+  build_colmap=1
+fi
+if [[ "$build_colmap" -eq 1 ]]; then
+  if [[ ! -d "$colmap_source/.git" ]]; then
+    git clone --recursive https://github.com/colmap/colmap.git "$colmap_source"
+  fi
+  git -C "$colmap_source" fetch origin "$colmap_commit"
+  git -C "$colmap_source" checkout --detach "$colmap_commit"
+  git -C "$colmap_source" submodule update --init --recursive
+  cmake -S "$colmap_source" -B "$colmap_source/build" -GNinja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CUDA_ARCHITECTURES=75 \
+    -DCUDA_ENABLED=ON \
+    -DGUI_ENABLED=OFF \
+    -DTESTS_ENABLED=OFF
+  cmake --build "$colmap_source/build" --parallel "${DJI_RECON_BUILD_JOBS:-2}"
+  $SUDO cmake --install "$colmap_source/build"
+fi
 
 frp_version=0.64.0
 frp_archive="frp_${frp_version}_linux_amd64.tar.gz"

@@ -5,7 +5,7 @@ versions at runtime.
 
 | Dependency | Pinned/tested version | Purpose | License |
 |---|---|---|---|
-| COLMAP | Ubuntu `3.7-2` | SfM, dense stereo, fusion, meshing and GPS alignment | BSD-3-Clause |
+| COLMAP | source `3.11.1` commit `682ea9ac4020a143047758739259b3ff04dabe8d` with CUDA compute 7.5; Ubuntu `3.7-2` CPU fallback | SfM, dense stereo, fusion, meshing and GPS alignment | BSD-3-Clause |
 | Blender | Ubuntu `3.0.1+dfsg-7` | decimation, GLB/OBJ export and independent headless validation | GPL-2.0-or-later |
 | MVS-Texturing / texrecon | commit `f3374298ac959cb5afe47a14e4d35d2ac7fbdbb1` | UV/material and image-based texture generation | BSD-3-Clause |
 | ExifTool | Ubuntu `12.40+dfsg-1` | GPS, altitude and orientation extraction | Artistic-1.0 or GPL-1.0-or-later |

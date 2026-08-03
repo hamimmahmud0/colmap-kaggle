@@ -17,7 +17,8 @@ remote is explicitly provisioned with every reconstruction dependency.
 2. Add this Git repository as notebook content or clone it into
    `/kaggle/working/colmap-kaggle`, then change to the repository root.
 3. Open and run `notebooks/dji_reconstruction.ipynb` from top to bottom.
-   The installer pins the tested Ubuntu 22.04 COLMAP, Blender, ExifTool,
+   The installer pins a CUDA-enabled COLMAP 3.11.1 source build for T4,
+   Ubuntu 22.04 Blender and ExifTool,
    MVS-Texturing source revision, Python packages, and FRP client. Python
    dependencies are isolated in `/kaggle/working/dji-recon-venv` so they do not
    downgrade or conflict with Kaggle's preinstalled notebook packages.
