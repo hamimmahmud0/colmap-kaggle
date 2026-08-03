@@ -633,27 +633,29 @@ def _mesh(ctx: PipelineContext) -> list[Path]:
 def _texture(ctx: PipelineContext) -> list[Path]:
     if not shutil.which("texrecon"):
         raise PipelineError("texrecon is required for UV/texture generation; run scripts/install_kaggle.sh")
-    # NVM stores image names as relative paths. Keeping it beside the working
-    # image hierarchy lets texrecon resolve those paths without rewriting it.
-    nvm = ctx.path("working") / "scene.nvm"
-    _colmap(ctx, ["model_converter", "--input_path", str(ctx.path("aligned")), "--output_path", str(nvm), "--output_type", "NVM"])
+    # Image undistortion creates a PINHOLE sparse model in the same coordinate
+    # frame as the dense mesh. Keep the NVM beside its image files so the
+    # relative image names embedded by COLMAP resolve directly in texrecon.
+    dense = ctx.path("dense")
+    nvm = dense / "images" / "scene.nvm"
+    _colmap(ctx, ["model_converter", "--input_path", str(dense / "sparse"), "--output_path", str(nvm), "--output_type", "NVM"])
     output_prefix = ctx.path("textured").with_suffix("")
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
     run_command(
         [
-            "texrecon", "--data_term", ctx.config["mesh"].get("texture_data_term", "area"),
-            "--outlier_removal", ctx.config["mesh"].get("texture_outlier_removal", "gauss_clamping"),
+            "texrecon", f"--data_term={ctx.config['mesh'].get('texture_data_term', 'area')}",
+            f"--outlier_removal={ctx.config['mesh'].get('texture_outlier_removal', 'gauss_clamping')}",
+            "--num_threads=1",
             str(nvm), str(ctx.path("mesh")), str(output_prefix),
         ],
-        cwd=ctx.path("working"),
+        cwd=dense / "images",
         log=ctx.log,
     )
-    candidates = _files(output_prefix.parent, (".obj",))
-    if not candidates:
+    expected = output_prefix.with_suffix(".obj")
+    if not expected.is_file():
         raise PipelineError("texrecon did not create a textured OBJ")
-    selected = candidates[0]
-    if selected != ctx.path("textured"):
-        shutil.copy2(selected, ctx.path("textured"))
+    if expected != ctx.path("textured"):
+        shutil.copy2(expected, ctx.path("textured"))
     return [output_prefix.parent]
 
 
