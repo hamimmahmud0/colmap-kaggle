@@ -73,6 +73,11 @@ def validate_config(config: dict[str, Any]) -> None:
         if name not in profiles:
             raise ConfigError(f"quality profile {name!r} is missing")
         profile = profiles[name]
-        for field in ("max_triangles", "max_texture_atlases", "max_texture_dimension"):
+        for field in (
+            "max_triangles",
+            "max_texture_atlases",
+            "max_texture_dimension",
+            "max_texture_megapixels",
+        ):
             if int(profile.get(field, 0)) <= 0:
                 raise ConfigError(f"quality profile {name}.{field} must be positive")

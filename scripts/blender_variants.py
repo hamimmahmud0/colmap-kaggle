@@ -28,7 +28,7 @@ def clear_scene() -> None:
 
 
 def import_obj(path: Path) -> None:
-    if hasattr(bpy.ops.wm, "obj_import"):
+    if bpy.app.version >= (3, 3, 0):
         bpy.ops.wm.obj_import(filepath=str(path))
     else:
         bpy.ops.import_scene.obj(filepath=str(path))
@@ -112,7 +112,7 @@ def resize_textures(profile_dir: Path, maximum: int, texture_format: str, qualit
 
 
 def export_obj(path: Path) -> None:
-    if hasattr(bpy.ops.wm, "obj_export"):
+    if bpy.app.version >= (3, 3, 0):
         bpy.ops.wm.obj_export(filepath=str(path), export_materials=True, path_mode="RELATIVE")
     else:
         bpy.ops.export_scene.obj(filepath=str(path), use_materials=True, path_mode="RELATIVE")

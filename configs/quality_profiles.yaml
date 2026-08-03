@@ -1,8 +1,9 @@
 high:
   max_triangles: 8000000
   target_triangles: 6000000
-  max_texture_atlases: 8
+  max_texture_atlases: 256
   max_texture_dimension: 8192
+  max_texture_megapixels: 512
   texture_format: png
   color_space: sRGB
   mipmaps: generated_by_viewer
@@ -13,8 +14,9 @@ high:
 medium:
   max_triangles: 2000000
   target_triangles: 1500000
-  max_texture_atlases: 4
+  max_texture_atlases: 256
   max_texture_dimension: 4096
+  max_texture_megapixels: 256
   texture_format: png
   color_space: sRGB
   mipmaps: generated_by_viewer
@@ -25,8 +27,9 @@ medium:
 low:
   max_triangles: 500000
   target_triangles: 350000
-  max_texture_atlases: 2
+  max_texture_atlases: 256
   max_texture_dimension: 2048
+  max_texture_megapixels: 128
   texture_format: jpeg
   jpeg_quality: 88
   color_space: sRGB

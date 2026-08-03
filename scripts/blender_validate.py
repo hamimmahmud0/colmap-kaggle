@@ -28,7 +28,7 @@ def clear() -> None:
 def import_asset(path: Path) -> None:
     if path.suffix == ".glb":
         bpy.ops.import_scene.gltf(filepath=str(path))
-    elif hasattr(bpy.ops.wm, "obj_import"):
+    elif bpy.app.version >= (3, 3, 0):
         bpy.ops.wm.obj_import(filepath=str(path))
     else:
         bpy.ops.import_scene.obj(filepath=str(path))
@@ -60,6 +60,7 @@ def inspect(path: Path, profile: dict) -> dict:
                 bounds_max[axis] = max(bounds_max[axis], point[axis])
     textures = [image for image in bpy.data.images if image.type == "IMAGE" and image.size[0] > 0]
     dimensions = [[int(image.size[0]), int(image.size[1])] for image in textures]
+    texture_megapixels = sum(width * height for width, height in dimensions) / 1_000_000
     if not meshes:
         errors.append("no mesh")
     if triangles <= 0:
@@ -72,6 +73,8 @@ def inspect(path: Path, profile: dict) -> dict:
         errors.append(f"texture atlas limit exceeded: {len(textures)}")
     if any(max(size) > int(profile["max_texture_dimension"]) for size in dimensions):
         errors.append("texture dimension limit exceeded")
+    if texture_megapixels > float(profile.get("max_texture_megapixels", math.inf)):
+        errors.append(f"texture pixel budget exceeded: {texture_megapixels:.2f} MP")
     if not finite:
         errors.append("non-finite transform or geometry")
     bounds = None
@@ -83,7 +86,8 @@ def inspect(path: Path, profile: dict) -> dict:
         }
     return {
         "path": str(path), "valid": not errors, "errors": errors, "meshes": len(meshes),
-        "materials": len(materials), "triangles": triangles, "textures": len(textures), "texture_dimensions": dimensions,
+        "materials": len(materials), "triangles": triangles, "textures": len(textures),
+        "texture_dimensions": dimensions, "texture_megapixels": texture_megapixels,
         "bounds": bounds,
     }
 
