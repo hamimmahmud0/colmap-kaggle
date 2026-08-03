@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import tempfile
@@ -86,7 +87,13 @@ class PublicTunnel:
             encoding="utf-8",
         )
         os.chmod(config, 0o600)
-        self.process = subprocess.Popen([frpc, "-c", str(config)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.process = subprocess.Popen(
+            [frpc, "-c", str(config)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
         time.sleep(2)
         if self.process.poll() is not None:
             output = self.process.stdout.read().strip() if self.process.stdout else ""
@@ -128,6 +135,7 @@ class PublicTunnel:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            start_new_session=True,
         )
         assert self.process.stdout is not None
         deadline = time.monotonic() + 45
@@ -153,10 +161,11 @@ class PublicTunnel:
             except TunnelError:
                 pass
         if self.process and self.process.poll() is None:
-            self.process.terminate()
+            os.killpg(self.process.pid, signal.SIGTERM)
             try:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self.process.kill()
+                os.killpg(self.process.pid, signal.SIGKILL)
+                self.process.wait(timeout=5)
         if self._temporary:
             self._temporary.cleanup()
