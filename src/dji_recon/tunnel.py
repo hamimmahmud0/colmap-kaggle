@@ -84,9 +84,24 @@ class PublicTunnel:
         )
         os.chmod(config, 0o600)
         self.process = subprocess.Popen([frpc, "-c", str(config)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        time.sleep(2)
+        if self.process.poll() is not None:
+            output = self.process.stdout.read().strip() if self.process.stdout else ""
+            detail = output.splitlines()[-1] if output else f"exit code {self.process.returncode}"
+            raise TunnelError(f"frpc exited before the tunnel became ready: {detail}")
+        threading.Thread(target=self._drain_process_output, daemon=True).start()
         threading.Thread(target=self._heartbeat, daemon=True).start()
         self.public_url = f"http://{self.host}:{remote_port}"
         return self.public_url
+
+    def _drain_process_output(self) -> None:
+        process = self.process
+        if not process or not process.stdout:
+            return
+        for line in process.stdout:
+            clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+            if clean:
+                self.log(clean)
 
     def _heartbeat(self) -> None:
         while not self._stop.wait(20):
@@ -120,6 +135,7 @@ class PublicTunnel:
                 break
             if match := pattern.search(line):
                 self.public_url = match.group(0)
+                threading.Thread(target=self._drain_process_output, daemon=True).start()
                 return self.public_url
         raise TunnelError("Cloudflare tunnel did not publish a URL")
 

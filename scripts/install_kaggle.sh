@@ -79,6 +79,16 @@ if ! command -v frpc >/dev/null; then
   $SUDO install -m 0755 "$dependency_root/frp_${frp_version}_linux_amd64/frpc" /usr/local/bin/frpc
 fi
 
+cloudflared_version=2026.7.3
+cloudflared_binary="cloudflared-linux-amd64"
+cloudflared_sha256=9d71c677db00134c1bd4144b7783486b654ad281b1ea62b4972098d19f770f17
+if ! command -v cloudflared >/dev/null; then
+  curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${cloudflared_version}/${cloudflared_binary}" \
+    -o "$dependency_root/$cloudflared_binary"
+  printf '%s  %s\n' "$cloudflared_sha256" "$dependency_root/$cloudflared_binary" | sha256sum --check
+  $SUDO install -m 0755 "$dependency_root/$cloudflared_binary" /usr/local/bin/cloudflared
+fi
+
 megacmd_version=2.5.2-1.1
 megacmd_sha256=61bf53bf14b9b4a6966a5ce94f61ee58b347ac4f11c6eddc8e9c637e1781a27b
 megacmd_deb="$dependency_root/megacmd-xUbuntu_22.04_amd64.deb"
@@ -114,6 +124,7 @@ blender --version | head -n 1
 exiftool -ver
 rclone version | head -n 1
 frpc --version
+cloudflared --version
 mega-version 2>/dev/null | head -n 1 || true
 texrecon --help 2>&1 | head -n 1 || true
 echo "Python CLI: $venv_path/bin/dji-recon"
