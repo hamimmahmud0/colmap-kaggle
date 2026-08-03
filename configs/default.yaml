@@ -35,6 +35,9 @@ colmap:
   use_gpu: auto
   dense_max_image_size: 3200
   mapper_threads: -1
+  min_registered_images: 3
+  min_registered_ratio: 0.5
+  min_sparse_points: 100
   options: {}
 
 mesh:

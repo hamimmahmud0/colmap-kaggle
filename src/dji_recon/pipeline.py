@@ -415,9 +415,39 @@ def _sparse(ctx: PipelineContext) -> list[Path]:
     models = [item.parent for item in output.rglob("images.bin")]
     if not models:
         raise PipelineError("COLMAP mapper did not produce a sparse model")
-    selected = max(models, key=lambda item: (item / "images.bin").stat().st_size)
+    import struct
+
+    def count(path: Path) -> int:
+        with path.open("rb") as stream:
+            header = stream.read(8)
+        return int(struct.unpack("<Q", header)[0]) if len(header) == 8 else 0
+
+    statistics = [
+        {
+            "path": str(model),
+            "cameras": count(model / "cameras.bin"),
+            "registered_images": count(model / "images.bin"),
+            "points3D": count(model / "points3D.bin"),
+        }
+        for model in models
+    ]
+    best = max(statistics, key=lambda item: (item["registered_images"], item["points3D"]))
+    selected = Path(best["path"])
+    total_images = len(_files(ctx.path("working"), (".tif", ".tiff", ".jpg", ".jpeg", ".png")))
+    ratio = best["registered_images"] / total_images if total_images else 0.0
+    report = ctx.meta_dir / "sparse-model.json"
+    atomic_write_json(report, {"selected": best, "registered_ratio": ratio, "all_models": statistics})
+    minimum_images = int(ctx.config["colmap"].get("min_registered_images", 3))
+    minimum_ratio = float(ctx.config["colmap"].get("min_registered_ratio", 0.5))
+    minimum_points = int(ctx.config["colmap"].get("min_sparse_points", 100))
+    if best["registered_images"] < minimum_images or best["points3D"] < minimum_points or ratio < minimum_ratio:
+        raise PipelineError(
+            "sparse reconstruction is below validation bounds: "
+            f"{best['registered_images']}/{total_images} images ({ratio:.1%}), {best['points3D']} points; "
+            f"required >= {minimum_images} images, >= {minimum_ratio:.0%}, >= {minimum_points} points"
+        )
     (ctx.meta_dir / "selected-sparse-model.txt").write_text(str(selected), encoding="utf-8")
-    return [selected, ctx.meta_dir / "selected-sparse-model.txt"]
+    return [selected, ctx.meta_dir / "selected-sparse-model.txt", report]
 
 
 def _selected_sparse(ctx: PipelineContext) -> Path:

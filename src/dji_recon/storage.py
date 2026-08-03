@@ -52,9 +52,14 @@ def _mega_script(commands: list[str], log: Callable[[str], None], *, capture: bo
         )
         output = f"{process.stdout}\n{process.stderr}"
         if not capture:
+            completed = 0
             for line in output.splitlines():
-                if line.strip():
+                if "Download finished:" in line:
+                    completed += 1
                     log(line)
+                elif " ERR " in line:
+                    log(line)
+            log(f"MEGA download session completed {completed} file transfer(s)")
         if process.returncode:
             raise RuntimeError(f"MEGAcmd session failed with exit code {process.returncode}")
         return output

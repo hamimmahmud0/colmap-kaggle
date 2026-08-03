@@ -137,9 +137,26 @@ def run_command(
         process.stdin.write(stdin)
         process.stdin.close()
     assert process.stdout is not None
+    repeated: dict[str, int] = {}
+    noisy_patterns = {
+        "TIFF metadata reader warnings": "TIFFFieldWithTag: Internal error, unknown tag",
+        "MEGA transfer refreshes": "TRANSFERRING ||",
+        "COLMAP initial-pair searches": "Finding good initial image pair",
+        "COLMAP rejected initial pairs": "No good initial image pair found",
+    }
     for line in process.stdout:
+        clean = redact_text(line.rstrip())
+        category = next((name for name, marker in noisy_patterns.items() if marker in clean), None)
+        if category:
+            repeated[category] = repeated.get(category, 0) + 1
+            if repeated[category] > 3:
+                continue
         if log:
-            log(redact_text(line.rstrip()))
+            log(clean)
+    if log:
+        for category, count in repeated.items():
+            if count > 3:
+                log(f"suppressed {count - 3} repeated {category.lower()}")
     code = process.wait()
     if code:
         raise CommandError(f"command failed with exit code {code}: {redact_text(display)}")
