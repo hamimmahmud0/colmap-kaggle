@@ -301,6 +301,7 @@ def main(argv: list[str] | None = None) -> None:
             print,
         )
         app.state.runtime.public_url = tunnel.start()
+        app.add_event_handler("shutdown", tunnel.stop)
         host = "0.0.0.0"
     try:
         uvicorn.run(app, host=host, port=port, access_log=False)
