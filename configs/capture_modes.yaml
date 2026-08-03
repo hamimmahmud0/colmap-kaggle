@@ -1,0 +1,21 @@
+aerial_grid:
+  description: Nadir or near-nadir grid with orderly adjacency and stable camera intrinsics.
+  matcher: sequential
+  single_camera: true
+  overlap: 10
+  loop_detection: true
+  options:
+    SequentialMatching.quadratic_overlap: 1
+    SequentialMatching.loop_detection: 1
+oblique_orbit:
+  description: Oblique orbit imagery where broad pairwise matching is safer than filename adjacency.
+  matcher: exhaustive
+  single_camera: true
+  options:
+    ExhaustiveMatching.block_size: 50
+mixed:
+  description: Mixed grid and oblique imagery; exhaustive matching prioritizes completeness.
+  matcher: exhaustive
+  single_camera: true
+  options:
+    ExhaustiveMatching.block_size: 50

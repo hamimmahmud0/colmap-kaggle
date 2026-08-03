@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dji-recon"
+version = "0.1.0"
+description = "Reproducible Kaggle-first DJI photogrammetry pipeline"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML==6.0.2",
+  "psutil==6.1.1",
+  "Pillow==11.1.0",
+  "tifffile==2025.2.18",
+  "numpy==2.2.3",
+  "rawpy==0.24.0",
+  "fastapi==0.115.8",
+  "uvicorn==0.34.0",
+  "python-multipart==0.0.20",
+  "itsdangerous==2.2.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.4", "httpx==0.28.1"]
+
+[project.scripts]
+dji-recon = "dji_recon.cli:main"
+dji-recon-web = "dji_recon.web:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

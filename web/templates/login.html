@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sign in</title><link rel="stylesheet" href="/static/app.css"></head>
+<body class="auth-page">
+<main class="auth-panel">
+  <h1>DJI Reconstruction</h1>
+  <p>Sign in to configure this runtime.</p>
+  <p class="error">{{ERROR}}</p>
+  <form method="post" action="/login">
+    <label>Password<input name="password" type="password" required autofocus autocomplete="current-password"></label>
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+</body></html>

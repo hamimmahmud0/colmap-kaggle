@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Runtime setup</title><link rel="stylesheet" href="/static/app.css"></head>
+<body class="auth-page">
+<main class="auth-panel">
+  <h1>DJI Reconstruction</h1>
+  <p>Create the password for this runtime. The public setup route closes immediately afterward.</p>
+  <p class="error">{{ERROR}}</p>
+  <form method="post" action="/setup">
+    <label>Password<input name="password" type="password" minlength="10" required autofocus autocomplete="new-password"></label>
+    <label>Confirm password<input name="confirm" type="password" minlength="10" required autocomplete="new-password"></label>
+    <button type="submit">Complete setup</button>
+  </form>
+</main>
+</body></html>

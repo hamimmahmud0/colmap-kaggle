@@ -1,0 +1,39 @@
+high:
+  max_triangles: 8000000
+  target_triangles: 6000000
+  max_texture_atlases: 8
+  max_texture_dimension: 8192
+  texture_format: png
+  color_space: sRGB
+  mipmaps: generated_by_viewer
+  compression: lossless
+  estimated_package_gb: 2.5
+  estimated_view_ram_gb: 10.0
+  estimated_view_vram_gb: 8.0
+medium:
+  max_triangles: 2000000
+  target_triangles: 1500000
+  max_texture_atlases: 4
+  max_texture_dimension: 4096
+  texture_format: png
+  color_space: sRGB
+  mipmaps: generated_by_viewer
+  compression: lossless
+  estimated_package_gb: 0.8
+  estimated_view_ram_gb: 5.0
+  estimated_view_vram_gb: 3.5
+low:
+  max_triangles: 500000
+  target_triangles: 350000
+  max_texture_atlases: 2
+  max_texture_dimension: 2048
+  texture_format: jpeg
+  jpeg_quality: 88
+  color_space: sRGB
+  mipmaps: generated_by_viewer
+  compression: lossy
+  estimated_package_gb: 0.25
+  estimated_view_ram_gb: 2.0
+  estimated_view_vram_gb: 1.8
+  vram_budget_gb: 4.0
+  safety_margin_gb: 2.2

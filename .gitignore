@@ -1,0 +1,36 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.env
+PROMPT.md.old
+*.secret
+*.token
+*rclone*.conf
+
+# Runtime data and artifacts
+workspace/
+downloads/
+dji_capture/
+working_images/
+colmap.db
+sparse/
+dense/
+meshes/
+artifacts/
+logs/
+.pipeline/
+run-config*.yaml
+
+# Large image/model outputs
+*.dng
+*.DNG
+*.tif
+*.tiff
+*.ply
+*.obj
+*.mtl
+*.glb
+*.gltf
+*.exr

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DJI Reconstruction</title><link rel="stylesheet" href="/static/app.css"></head>
+<body class="workspace">
+<header><strong>DJI Reconstruction</strong><span id="connection">Connecting…</span><form method="post" action="/logout"><button class="plain" type="submit">Sign out</button></form></header>
+<aside>
+  <h2>Stages</h2>
+  <ol id="stages"></ol>
+</aside>
+<main>
+  <section id="configuration">
+    <h1>Run configuration</h1>
+    <form id="run-form">
+      <fieldset><legend>Input</legend>
+        <label>Source<select name="input_type" id="input-type"><option value="mega_public">MEGA folder</option><option value="local">Runtime directory</option><option value="rclone">Existing rclone remote</option></select></label>
+        <label>Local path or rclone remote<input name="input_path" value="input"></label>
+        <label>MEGA folder URL<input name="input_url" type="password" autocomplete="off"></label>
+        <label>Representative subset limit<input name="subset_limit" type="number" min="3" placeholder="all images"></label>
+      </fieldset>
+      <fieldset><legend>Reconstruction</legend>
+        <label>Capture mode<select name="capture_mode"><option value="mixed">Mixed</option><option value="aerial_grid">Aerial grid</option><option value="oblique_orbit">Oblique orbit</option></select></label>
+        <label>Medium profile VRAM budget (GB)<input name="medium_vram_gb" type="number" min="1" step="0.5" value="8"></label>
+      </fieldset>
+      <fieldset><legend>Upload</legend>
+        <label>Backend<select name="upload_backend" id="upload-backend"><option value="none">Do not upload</option><option value="mega">MEGA</option><option value="gdrive">Google Drive</option></select></label>
+        <label>Destination folder<input name="output_destination" value="dji-recon"></label>
+        <label>MEGA email<input name="mega_email" type="email" autocomplete="off"></label>
+        <label>MEGA password<input name="mega_password" type="password" autocomplete="off"></label>
+        <label>Google Drive rclone token JSON<textarea name="drive_token" rows="3" autocomplete="off"></textarea></label>
+        <button type="button" id="drive-help">Show Google Drive authorization steps</button>
+        <pre id="drive-instructions" hidden></pre>
+      </fieldset>
+      <p id="form-error" class="error"></p>
+      <button type="submit" id="run-button">Start pipeline</button>
+    </form>
+  </section>
+  <section id="terminal">
+    <div class="terminal-heading"><h2>Progress and logs</h2><button id="upload-button" hidden>Confirm upload</button></div>
+    <pre id="logs" aria-live="polite">No run has started.</pre>
+  </section>
+</main>
+<footer><span id="runtime-status">setup complete</span><span id="updated"></span></footer>
+<script src="/static/app.js"></script>
+</body></html>

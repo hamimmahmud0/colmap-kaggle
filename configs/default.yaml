@@ -1,0 +1,62 @@
+workspace: workspace
+execution_mode: real
+capture_mode: mixed
+capture_modes_file: capture_modes.yaml
+quality_profiles_file: quality_profiles.yaml
+
+input:
+  type: local
+  path: input
+  url: null
+  rclone_remote: null
+  subset_limit: null
+
+raw:
+  output_color: sRGB
+  gamma: [1.0, 1.0]
+  white_balance: neutral
+  demosaic: AHD
+  auto_bright: false
+  exposure_shift: 1.0
+  highlight_mode: clip
+  tiff_compression: deflate
+  preserve_metadata: true
+
+resources:
+  minimum_free_disk_gb: 20
+  reserve_ram_gb: 4
+  auto_downscale: true
+  max_working_dimension: 4000
+
+colmap:
+  executable: colmap
+  camera_model: OPENCV
+  single_camera: true
+  use_gpu: auto
+  dense_max_image_size: 3200
+  mapper_threads: -1
+  options: {}
+
+mesh:
+  poisson_trim: 7
+  texture_tool: texrecon
+  texture_data_term: area
+  texture_outlier_removal: gauss_clamping
+
+quality:
+  medium_vram_gb: 8
+  center_at_origin: true
+
+upload:
+  backend: none
+  remote: null
+  destination: dji-recon
+  require_confirmation: true
+
+web:
+  bind_host: 127.0.0.1
+  port: 7860
+  transport_host: 163.61.236.112
+  broker_port: 7001
+  frp_port: 7000
+  tunnel: frp
