@@ -106,7 +106,10 @@ def resize_textures(profile_dir: Path, maximum: int, texture_format: str, qualit
         image.filepath_raw = str(target)
         image.file_format = "JPEG" if suffix == ".jpg" else "PNG"
         if suffix == ".jpg":
-            image.save_render(str(target), quality=quality)
+            settings = bpy.context.scene.render.image_settings
+            settings.file_format = "JPEG"
+            settings.quality = quality
+            image.save_render(str(target), scene=bpy.context.scene)
         else:
             image.save()
 
