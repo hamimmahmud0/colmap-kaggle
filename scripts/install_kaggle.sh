@@ -25,8 +25,14 @@ else
   mkdir -p "$runtime_root"
 fi
 venv_path="${DJI_RECON_VENV:-$runtime_root/dji-recon-venv}"
-python3 -m venv "$venv_path"
-"$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
+rm -rf "$venv_path"
+if command -v uv >/dev/null; then
+  uv venv --python python3 "$venv_path"
+  uv pip install --python "$venv_path/bin/python" -e '.[test]'
+else
+  python3.10 -m venv "$venv_path"
+  "$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
+fi
 
 dependency_root="${DJI_RECON_DEPENDENCY_ROOT:-$runtime_root/.dji-recon-dependencies}"
 mkdir -p "$dependency_root"
