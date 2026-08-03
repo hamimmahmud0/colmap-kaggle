@@ -18,7 +18,7 @@ env DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recomme
   ca-certificates curl git cmake ninja-build build-essential python3-venv \
   libpng-dev libjpeg-dev libtiff-dev libtbb-dev \
   libboost-program-options-dev libboost-graph-dev libboost-system-dev \
-  libeigen3-dev libfreeimage-dev libmetis-dev libgoogle-glog-dev \
+  libeigen3-dev libfreeimage-dev libflann-dev libmetis-dev libgoogle-glog-dev \
   libgtest-dev libsqlite3-dev libglew-dev qtbase5-dev libqt5opengl5-dev \
   libcgal-dev libceres-dev libsuitesparse-dev
 
