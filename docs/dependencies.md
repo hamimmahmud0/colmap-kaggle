@@ -15,6 +15,7 @@ versions at runtime.
 | rawpy | `0.24.0` | deterministic LibRaw DNG decoding/demosaicing | MIT; LibRaw LGPL-2.1/CDDL |
 | tifffile | `2025.2.18` | validated 16-bit TIFF output | BSD-3-Clause |
 | FastAPI / Uvicorn | `0.115.8` / `0.34.0` | runtime Web UI and API | MIT / BSD-3-Clause |
+| wrapt | `1.17.2` | satisfies Kaggle's injected Python startup instrumentation in the isolated environment | BSD-2-Clause |
 
 See `pyproject.toml` for all pinned Python packages. Transitive Debian and
 source-build dependencies retain their upstream licenses. The installer does

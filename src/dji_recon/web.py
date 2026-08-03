@@ -50,13 +50,17 @@ class RuntimeState:
 
     def set_password(self, password: str) -> None:
         self.password_salt = os.urandom(16)
-        self.password_hash = hashlib.scrypt(password.encode(), salt=self.password_salt, n=2**15, r=8, p=1)
+        self.password_hash = hashlib.scrypt(
+            password.encode(), salt=self.password_salt, n=2**15, r=8, p=1, maxmem=64 * 1024 * 1024
+        )
         self.status = "ready"
 
     def check_password(self, password: str) -> bool:
         if self.password_salt is None or self.password_hash is None:
             return False
-        candidate = hashlib.scrypt(password.encode(), salt=self.password_salt, n=2**15, r=8, p=1)
+        candidate = hashlib.scrypt(
+            password.encode(), salt=self.password_salt, n=2**15, r=8, p=1, maxmem=64 * 1024 * 1024
+        )
         return hmac.compare_digest(candidate, self.password_hash)
 
     def add_event(self, event: PipelineEvent) -> None:
