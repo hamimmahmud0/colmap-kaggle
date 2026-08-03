@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 
 def arguments() -> tuple[Path, Path, Path]:
@@ -64,7 +64,7 @@ def join_meshes() -> bpy.types.Object:
 
 
 def center_geometry(obj: bpy.types.Object) -> list[float]:
-    corners = [obj.matrix_world @ obj.bound_box[index] for index in range(8)]
+    corners = [obj.matrix_world @ Vector(obj.bound_box[index]) for index in range(8)]
     center = sum(corners, corners[0].copy() * 0) / 8
     obj.data.transform(obj.matrix_world)
     obj.matrix_world.identity()
