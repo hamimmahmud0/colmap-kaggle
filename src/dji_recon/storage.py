@@ -5,11 +5,52 @@ import os
 import shutil
 import subprocess
 import tempfile
+import re
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Callable
 
 from .util import CommandError, run_command
+
+
+def _mega_quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _parse_mega_paths(output: str) -> list[str]:
+    paths = []
+    for raw_line in output.splitlines():
+        line = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]", "", raw_line).strip()
+        if line.startswith("/") and line.lower().endswith(".dng"):
+            paths.append(line)
+    return sorted(set(paths), key=str.casefold)
+
+
+def _mega_script(commands: list[str], log: Callable[[str], None], *, capture: bool = False) -> str:
+    executable = shutil.which("mega-cmd")
+    if not executable:
+        raise RuntimeError("mega-cmd is required for MEGA folder input")
+    with tempfile.TemporaryDirectory(prefix="dji-recon-megacmd-") as home:
+        environment = os.environ.copy()
+        environment["HOME"] = home
+        payload = "\n".join([*commands, "logout", "quit"]) + "\n"
+        process = subprocess.run(
+            [executable],
+            input=payload,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            env=environment,
+            check=False,
+        )
+        output = f"{process.stdout}\n{process.stderr}"
+        if not capture:
+            for line in output.splitlines():
+                if line.strip():
+                    log(line)
+        if process.returncode:
+            raise RuntimeError(f"MEGAcmd session failed with exit code {process.returncode}")
+        return output
 
 
 class EphemeralRclone(AbstractContextManager["EphemeralRclone"]):
@@ -81,16 +122,21 @@ def download_input(config: dict[str, Any], destination: Path, log: Callable[[str
                     target.symlink_to(item)
         return
     if kind == "mega_public":
-        mega_cmd = shutil.which("mega-cmd")
-        if not mega_cmd:
-            raise RuntimeError(
-                "mega-cmd is required for a private-key MEGA folder download without exposing the URL in process arguments"
-            )
         url = source.get("url")
         if not url:
             raise ValueError("input.url is required for mega_public")
-        # The link is supplied over stdin to the interactive shell, never argv.
-        run_command([mega_cmd], stdin=f"get {url} {destination}\nquit\n", log=log)
+        # The link and key are supplied over stdin to an isolated interactive
+        # shell, never argv. Selecting before `get` protects small runtimes
+        # from downloading an entire large capture merely to make a subset.
+        inventory = _mega_script([f"login {_mega_quote(url)}", "find / --type=f"], log, capture=True)
+        dng_paths = _parse_mega_paths(inventory)
+        if not dng_paths:
+            raise RuntimeError("MEGA public folder contains no discoverable DNG files")
+        limit = source.get("subset_limit")
+        selected = dng_paths[: int(limit)] if limit else dng_paths
+        commands = [f"login {_mega_quote(url)}"]
+        commands.extend(f"get {_mega_quote(path)} {_mega_quote(str(destination))}" for path in selected)
+        _mega_script(commands, log)
         return
     if kind == "rclone":
         remote = source.get("rclone_remote")
