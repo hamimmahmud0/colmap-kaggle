@@ -7,11 +7,12 @@ if [[ ! -x "$venv_path/bin/pytest" ]]; then
     rm -rf "$venv_path"
     if command -v uv >/dev/null; then
         uv venv --python python3 "$venv_path"
-        uv pip install --python "$venv_path/bin/python" -e '.[test]'
     else
         python3 -m venv "$venv_path"
-        "$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
     fi
+fi
+if command -v uv >/dev/null; then
+    uv pip install --python "$venv_path/bin/python" -e '.[test]'
 else
     "$venv_path/bin/python" -m pip install --disable-pip-version-check -e '.[test]'
 fi
