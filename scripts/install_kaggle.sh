@@ -10,7 +10,7 @@ else
 fi
 
 $SUDO apt-get update
-$SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+env DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recommends \
   blender=3.0.1+dfsg-7 \
   colmap=3.7-2 \
   libimage-exiftool-perl=12.40+dfsg-1 \
