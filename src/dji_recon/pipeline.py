@@ -495,7 +495,7 @@ def _align(ctx: PipelineContext) -> list[Path]:
         [
             "model_aligner", "--input_path", str(_selected_sparse(ctx)), "--output_path", str(aligned),
             "--ref_images_path", str(references), "--ref_is_gps", "1", "--alignment_type", "enu",
-            "--robust_alignment", "1", "--robust_alignment_max_error", "5.0",
+            "--alignment_max_error", "5.0",
         ],
     )
     atomic_write_json(
