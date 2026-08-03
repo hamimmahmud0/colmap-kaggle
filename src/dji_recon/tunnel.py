@@ -46,6 +46,7 @@ class PublicTunnel:
         self.tunnel_id: str | None = None
         self._stop = threading.Event()
         self._temporary: tempfile.TemporaryDirectory[str] | None = None
+        self._cloudflare_worker_pids: set[int] = set()
         self.public_url: str | None = None
 
     def start(self) -> str:
@@ -146,8 +147,41 @@ class PublicTunnel:
                 break
             if match := pattern.search(line):
                 self.public_url = match.group(0)
+                self._cloudflare_worker_pids.update(self._find_cloudflare_workers())
                 return self.public_url
         raise TunnelError("Cloudflare tunnel did not publish a URL")
+
+    def _find_cloudflare_workers(self) -> set[int]:
+        target = f"http://127.0.0.1:{self.local_port}"
+        result: set[int] = set()
+        for process_dir in Path("/proc").glob("[0-9]*"):
+            try:
+                arguments = (process_dir / "cmdline").read_bytes().split(b"\0")
+                decoded = [argument.decode(errors="replace") for argument in arguments if argument]
+                if target in decoded and any(Path(argument).name == "cloudflared" for argument in decoded):
+                    result.add(int(process_dir.name))
+            except (FileNotFoundError, PermissionError, ProcessLookupError, ValueError):
+                continue
+        return result
+
+    def _stop_cloudflare_workers(self) -> None:
+        self._cloudflare_worker_pids.update(self._find_cloudflare_workers())
+        for pid in self._cloudflare_worker_pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            remaining = {pid for pid in self._cloudflare_worker_pids if Path(f"/proc/{pid}").exists()}
+            if not remaining:
+                return
+            time.sleep(0.1)
+        for pid in remaining:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
     def stop(self) -> None:
         self._stop.set()
@@ -167,5 +201,6 @@ class PublicTunnel:
             except subprocess.TimeoutExpired:
                 os.killpg(self.process.pid, signal.SIGKILL)
                 self.process.wait(timeout=5)
+        self._stop_cloudflare_workers()
         if self._temporary:
             self._temporary.cleanup()
