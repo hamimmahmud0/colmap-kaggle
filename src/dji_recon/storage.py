@@ -26,6 +26,13 @@ def _parse_mega_paths(output: str) -> list[str]:
     return sorted(set(paths), key=str.casefold)
 
 
+def _mega_export_relative(path: str) -> str:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        raise ValueError(f"unexpected exported-folder path: {path!r}")
+    return "/".join(parts[1:])
+
+
 def _mega_script(commands: list[str], log: Callable[[str], None], *, capture: bool = False) -> str:
     executable = shutil.which("mega-cmd")
     if not executable:
@@ -135,7 +142,10 @@ def download_input(config: dict[str, Any], destination: Path, log: Callable[[str
         limit = source.get("subset_limit")
         selected = dng_paths[: int(limit)] if limit else dng_paths
         commands = [f"login {_mega_quote(url)}"]
-        commands.extend(f"get {_mega_quote(path)} {_mega_quote(str(destination))}" for path in selected)
+        commands.extend(
+            f"get {_mega_quote(_mega_export_relative(path))} {_mega_quote(str(destination))}"
+            for path in selected
+        )
         _mega_script(commands, log)
         return
     if kind == "rclone":
