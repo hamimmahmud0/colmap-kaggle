@@ -301,7 +301,6 @@ def main(argv: list[str] | None = None) -> None:
             print,
         )
         app.state.runtime.public_url = tunnel.start()
-        print(f"Public setup URL: {app.state.runtime.public_url}/setup")
         host = "0.0.0.0"
     try:
         uvicorn.run(app, host=host, port=port, access_log=False)

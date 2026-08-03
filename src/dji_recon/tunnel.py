@@ -49,11 +49,14 @@ class PublicTunnel:
 
     def start(self) -> str:
         try:
-            return self._start_frp()
+            url = self._start_frp()
         except Exception as error:
             self.log(f"primary FRP tunnel unavailable: {error}; trying Cloudflare fallback")
             self.stop()
-            return self._start_cloudflare()
+            url = self._start_cloudflare()
+        self.log(f"Public setup URL: {url}/setup")
+        threading.Thread(target=self._drain_process_output, daemon=True).start()
+        return url
 
     def _start_frp(self) -> str:
         frpc = shutil.which("frpc")
@@ -88,8 +91,8 @@ class PublicTunnel:
         if self.process.poll() is not None:
             output = self.process.stdout.read().strip() if self.process.stdout else ""
             detail = output.splitlines()[-1] if output else f"exit code {self.process.returncode}"
+            detail = re.sub(r"\x1b\[[0-9;]*m", "", detail)
             raise TunnelError(f"frpc exited before the tunnel became ready: {detail}")
-        threading.Thread(target=self._drain_process_output, daemon=True).start()
         threading.Thread(target=self._heartbeat, daemon=True).start()
         self.public_url = f"http://{self.host}:{remote_port}"
         return self.public_url
@@ -135,7 +138,6 @@ class PublicTunnel:
                 break
             if match := pattern.search(line):
                 self.public_url = match.group(0)
-                threading.Thread(target=self._drain_process_output, daemon=True).start()
                 return self.public_url
         raise TunnelError("Cloudflare tunnel did not publish a URL")
 
