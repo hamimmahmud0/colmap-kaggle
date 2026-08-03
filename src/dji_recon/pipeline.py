@@ -649,6 +649,11 @@ def _texture(ctx: PipelineContext) -> list[Path]:
         ctx.log("reusing complete texrecon OBJ, MTL, and texture maps")
         return [output_prefix.parent]
 
+    temporary = output_prefix.parent / "tmp"
+    if temporary.is_dir():
+        ctx.log("removing an incomplete texrecon temporary directory", "warning")
+        shutil.rmtree(temporary)
+
     # Image undistortion creates a PINHOLE sparse model in the same coordinate
     # frame as the dense mesh. Keep the NVM beside its image files so the
     # relative image names embedded by COLMAP resolve directly in texrecon.
