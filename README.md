@@ -141,7 +141,7 @@ Local source is authoritative. Commit and push locally, then use the remote's
 read-only GitHub key:
 
 ```bash
-git clone git@github.com:hamimmahmud0/colmap-kaggle.git /kaggle/working/colmap-kaggle
+git clone https://github.com/hamimmahmud0/colmap-kaggle.git /kaggle/working/colmap-kaggle
 cd /kaggle/working/colmap-kaggle
 git pull --ff-only
 bash scripts/remote_smoke.sh
