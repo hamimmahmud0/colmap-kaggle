@@ -7,10 +7,10 @@
 #   curl -fsSL https://raw.githubusercontent.com/hamimmahmud0/colmap-kaggle/main/install.sh | bash
 #
 # Or with a specific tag:
-#   curl -fsSL https://raw.githubusercontent.com/hamimmahmud0/colmap-kaggle/main/install.sh | bash -s -- v1.1.1
+#   curl -fsSL https://raw.githubusercontent.com/hamimmahmud0/colmap-kaggle/main/install.sh | bash -s -- v1.1.2
 #
 # Or download and run locally:
-#   ./install.sh v1.1.1
+#   ./install.sh v1.1.2
 #
 # The script:
 #   1. Downloads the tagged release tarball from GitHub
@@ -25,11 +25,12 @@
 #   – Internet access
 # =============================================================================
 
-set -euo pipefail
+# Use explicit error handling (no set -e) so every failure is visible.
+set -uo pipefail
 
 # --- configuration -----------------------------------------------------------
 REPO="hamimmahmud0/colmap-kaggle"
-DEFAULT_TAG="v1.1.1"
+DEFAULT_TAG="v1.1.2"
 INSTALL_DIR="${HOME}/.dji-recon"
 VENV_DIR="${INSTALL_DIR}/venv"
 CONFIG_DIR="${INSTALL_DIR}/config"
@@ -58,128 +59,95 @@ check_prerequisites() {
   log "Checking prerequisites …"
   has curl    || fail "curl is required. Install with: sudo apt install curl"
   has python3 || fail "python3 >= 3.10 is required"
-
-  # Ensure python3-venv / ensurepip is available
-  if ! python3 -m venv --help >/dev/null 2>&1; then
-    warn "python3-venv is not installed – attempting to install it …"
-    if has apt-get && has sudo; then
-      sudo apt-get update -qq
-      sudo apt-get install -y -qq python3-venv || fail "could not install python3-venv via apt"
-      ok "python3-venv installed"
-    else
-      fail "python3-venv is required but cannot be installed automatically (no apt/sudo)"
-    fi
-  fi
-
   has git     || warn "git is not installed – some features may be unavailable"
   has cmake   || warn "cmake is not installed – COLMAP / texrecon will need system packages"
   ok "Prerequisites satisfied"
 }
 
-# --- tag resolution ---------------------------------------------------------
-resolve_tag() {
-  local tag="${1:-$DEFAULT_TAG}"
-  # Strip leading 'v' if present and re-add for consistency
-  tag="${tag#v}"
-  tag="v${tag}"
-
-  # Verify the tag exists on GitHub (fast check with curl)
-  local http_code
-  http_code=$(curl -s -o /dev/null -w '%{http_code}' \
-    "https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz")
-
-  if [[ "$http_code" == "404" ]]; then
-    fail "Tag ${tag} not found at https://github.com/${REPO}/releases\n" \
-         "       Available at: https://github.com/${REPO}/tags"
-  elif [[ "$http_code" != "200" && "$http_code" != "302" ]]; then
-    fail "Unexpected HTTP ${http_code} when checking tag ${tag}"
-  fi
-
-  echo "$tag"
-}
-
 # --- download & extract -----------------------------------------------------
 download_release() {
   local tag="$1"
+  local dest="$2"
   local tarball_url="https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
-  local tmp_dir
 
-  log "Downloading ${tag} …"
-  tmp_dir=$(mktemp -d -t dji-recon-install.XXXXXX)
-
-  # 10-minute timeout, retry twice
-  curl -fsSL --retry 2 --retry-max-time 600 --max-time 600 \
-    "$tarball_url" -o "${tmp_dir}/${tag}.tar.gz" || fail "Download failed after retries"
-
-  tar -xzf "${tmp_dir}/${tag}.tar.gz" -C "$tmp_dir"
-
-  local extracted
-  extracted=$(find "$tmp_dir" -maxdepth 1 -type d -name "colmap-kaggle-*" | head -n1)
-  if [[ -z "$extracted" ]]; then
-    rm -rf "$tmp_dir"
-    fail "Failed to extract tarball (expected colmap-kaggle-* directory)"
+  log "Downloading ${tag} from GitHub …"
+  if ! curl -fsSL --retry 3 --retry-delay 5 --max-time 300 \
+    "${tarball_url}" -o "${dest}"; then
+    fail "Download failed — check internet connectivity and that tag ${tag} exists\n" \
+         "       URL: ${tarball_url}"
   fi
+  ok "Downloaded ${tag}.tar.gz"
 
-  # Return the source directory path and the tmp_dir (for cleanup later).
-  # The caller MUST use the returned tmp_dir to clean up.
-  printf '%s\n%s' "$extracted" "$tmp_dir"
+  log "Extracting …"
+  if ! tar -xzf "${dest}" -C "$(dirname "${dest}")"; then
+    fail "Failed to extract tarball"
+  fi
+  ok "Extracted"
 }
 
 # --- Python environment -----------------------------------------------------
 setup_python() {
-  local src="$1"
+  local src_dir="$1"
 
   log "Setting up Python environment …"
-  mkdir -p "$INSTALL_DIR"
+  mkdir -p "${INSTALL_DIR}"
 
-  # Remove any previous venv and recreate.
-  # `python3 -m venv` can fail when ensurepip is missing/broken (common on
-  # minimal Docker / WSL images).  We always create with --without-pip and
-  # install pip ourselves via get-pip.py for reliability.
-  rm -rf "$VENV_DIR"
+  # Remove any previous venv
+  rm -rf "${VENV_DIR}"
 
-  if ! python3 -m venv --without-pip "$VENV_DIR" 2>/dev/null; then
-    warn "python3 -m venv --without-pip failed – installing python3-venv …"
+  # Create venv without pip (most portable across Python versions)
+  if ! python3 -m venv --without-pip "${VENV_DIR}" 2>/dev/null; then
+    warn "python3-venv may not be installed — attempting to install it …"
     if has apt-get && has sudo; then
-      sudo apt-get update -qq
-      sudo apt-get install -y -qq python3-venv || true
+      sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv || true
     fi
-    if ! python3 -m venv --without-pip "$VENV_DIR"; then
-      fail "Cannot create Python virtual environment; install python3-venv manually"
+    if ! python3 -m venv --without-pip "${VENV_DIR}"; then
+      fail "Cannot create Python virtual environment\n" \
+           "       Install python3-venv manually: sudo apt install python3-venv"
     fi
   fi
 
   # Bootstrap pip into the venv
-  local tmp_pip
-  tmp_pip=$(mktemp -t get-pip.XXXXXX.py)
-  curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$tmp_pip"
-  "${VENV_DIR}/bin/python" "$tmp_pip" --quiet || fail "pip bootstrap failed"
-  rm -f "$tmp_pip"
+  log "Bootstrapping pip …"
+  local pip_bootstrap="${INSTALL_DIR}/get-pip.py"
+  if ! curl -fsSL --retry 2 --max-time 60 \
+    https://bootstrap.pypa.io/get-pip.py -o "${pip_bootstrap}"; then
+    fail "Could not download pip bootstrap"
+  fi
+  if ! "${VENV_DIR}/bin/python" "${pip_bootstrap}" --quiet; then
+    fail "pip bootstrap failed"
+  fi
+  rm -f "${pip_bootstrap}"
 
-  # Install the pipeline project
-  "${VENV_DIR}/bin/python" -m pip install --quiet "${src}"
-
+  # Install the project
+  log "Installing pipeline package …"
+  if ! "${VENV_DIR}/bin/python" -m pip install --quiet "${src_dir}"; then
+    fail "pip install failed\n" \
+         "       Check that ${src_dir} contains a valid pyproject.toml"
+  fi
   ok "Python package installed"
 }
 
 # --- config -----------------------------------------------------------------
 setup_config() {
-  log "Copying default configuration …"
-  mkdir -p "$CONFIG_DIR" "$WORKSPACE_DIR"
+  local src_dir="$1"
 
-  local src_config="$1/configs/default.yaml"
+  log "Copying default configuration …"
+  mkdir -p "${CONFIG_DIR}" "${WORKSPACE_DIR}"
+
+  local src_config="${src_dir}/configs/default.yaml"
   local dst_config="${CONFIG_DIR}/default.yaml"
 
-  if [[ ! -f "$src_config" ]]; then
-    warn "default.yaml not found in release – skipping"
+  if [[ ! -f "${src_config}" ]]; then
+    warn "default.yaml not found in release — skipping"
     return
   fi
 
-  if [[ -f "$dst_config" ]]; then
-    warn "Configuration already exists at ${dst_config} – not overwriting"
+  if [[ -f "${dst_config}" ]]; then
+    warn "Configuration already exists at ${dst_config} — not overwriting"
     warn "Delete it manually if you want a fresh copy"
   else
-    cp "$src_config" "$dst_config"
+    cp "${src_config}" "${dst_config}"
     ok "Config copied to ${dst_config}"
   fi
 }
@@ -190,10 +158,10 @@ print_summary() {
   echo ""
   printf "${BOLD}${GREEN}═══ DJI Reconstruction Pipeline installed ═══${RESET}\n"
   echo ""
-  printf "  Version    : ${BOLD}%s${RESET}\n" "$tag"
-  printf "  Install    : ${BOLD}%s${RESET}\n" "$INSTALL_DIR"
+  printf "  Version    : ${BOLD}%s${RESET}\n" "${tag}"
+  printf "  Install    : ${BOLD}%s${RESET}\n" "${INSTALL_DIR}"
   printf "  Config     : ${BOLD}%s${RESET}\n" "${CONFIG_DIR}/default.yaml"
-  printf "  Workspace  : ${BOLD}%s${RESET}\n" "$WORKSPACE_DIR"
+  printf "  Workspace  : ${BOLD}%s${RESET}\n" "${WORKSPACE_DIR}"
   echo ""
   echo "  Quick start:"
   echo ""
@@ -221,7 +189,7 @@ print_summary() {
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "  ${YELLOW}Missing runtime dependencies (install with apt or see docs/dependencies.md):${RESET}"
     for item in "${missing[@]}"; do
-      printf "    ${YELLOW}– %s${RESET}\n" "$item"
+      printf "    ${YELLOW}– %s${RESET}\n" "${item}"
     done
     echo ""
     printf "  ${YELLOW}Tip: run ${BOLD}scripts/install_kaggle.sh${RESET}${YELLOW} for a full dependency install${RESET}\n"
@@ -237,23 +205,35 @@ main() {
 
   check_prerequisites
 
-  local tag
-  tag=$(resolve_tag "${1:-}")
+  # Resolve tag
+  local tag="${1:-${DEFAULT_TAG}}"
+  tag="${tag#v}"
+  tag="v${tag}"
+  log "Installing version ${tag}"
 
-  local src tmp_dir
-  # download_release returns two lines: source_dir + newline + tmp_dir
-  {
-    read -r src
-    read -r tmp_dir
-  } < <(download_release "$tag")
+  # Create temp workspace
+  local tmp_dir
+  tmp_dir=$(mktemp -d -t dji-recon-install.XXXXXX)
 
-  setup_python "$src"
-  setup_config "$src"
+  # Download and extract
+  local tarball="${tmp_dir}/${tag}.tar.gz"
+  download_release "${tag}" "${tarball}"
 
-  # Clean up extracted tarball
-  rm -rf "$tmp_dir"
+  # Find the extracted directory
+  local src_dir
+  src_dir=$(find "${tmp_dir}" -maxdepth 1 -type d -name "colmap-kaggle-*" 2>/dev/null | head -n1)
+  if [[ -z "${src_dir}" ]]; then
+    fail "Could not find extracted directory in ${tmp_dir}"
+  fi
 
-  print_summary "$tag"
+  # Setup
+  setup_python "${src_dir}"
+  setup_config "${src_dir}"
+
+  # Cleanup temp
+  rm -rf "${tmp_dir}"
+
+  print_summary "${tag}"
 }
 
 main "$@"
