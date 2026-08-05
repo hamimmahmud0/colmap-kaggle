@@ -126,36 +126,31 @@ setup_python() {
   log "Setting up Python environment …"
   mkdir -p "$INSTALL_DIR"
 
-  # Create venv – `python3 -m venv` needs python3-venv + ensurepip.
-  # On minimal images (Docker, WSL), one or both may be absent.
+  # Remove any previous venv and recreate.
+  # `python3 -m venv` can fail when ensurepip is missing/broken (common on
+  # minimal Docker / WSL images).  We always create with --without-pip and
+  # install pip ourselves via get-pip.py for reliability.
   rm -rf "$VENV_DIR"
 
-  if python3 -m venv "$VENV_DIR" 2>/dev/null; then
-    : # created successfully
-  else
-    warn "python3 -m venv failed – checking for python3-venv / python3-pip …"
+  if ! python3 -m venv --without-pip "$VENV_DIR" 2>/dev/null; then
+    warn "python3 -m venv --without-pip failed – installing python3-venv …"
     if has apt-get && has sudo; then
       sudo apt-get update -qq
-      sudo apt-get install -y -qq python3-venv python3-pip 2>/dev/null || true
+      sudo apt-get install -y -qq python3-venv || true
     fi
-
-    # Retry
-    if ! python3 -m venv "$VENV_DIR" 2>/dev/null; then
-      # Last resort: bootstrap pip via get-pip.py
-      warn "Bootstrapping pip via get-pip.py …"
-      local tmp_pip
-      tmp_pip=$(mktemp -t get-pip.XXXXXX.py)
-      curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$tmp_pip"
-      python3 "$tmp_pip" --user --quiet || fail "pip bootstrap failed"
-      # Recreate venv without pip, then install pip into it
-      python3 -m venv --without-pip "$VENV_DIR"
-      "${VENV_DIR}/bin/python" "$tmp_pip" --quiet || fail "pip install into venv failed"
-      rm -f "$tmp_pip"
+    if ! python3 -m venv --without-pip "$VENV_DIR"; then
+      fail "Cannot create Python virtual environment; install python3-venv manually"
     fi
   fi
 
-  # Upgrade pip + install the project
-  "${VENV_DIR}/bin/python" -m pip install --quiet --upgrade pip
+  # Bootstrap pip into the venv
+  local tmp_pip
+  tmp_pip=$(mktemp -t get-pip.XXXXXX.py)
+  curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$tmp_pip"
+  "${VENV_DIR}/bin/python" "$tmp_pip" --quiet || fail "pip bootstrap failed"
+  rm -f "$tmp_pip"
+
+  # Install the pipeline project
   "${VENV_DIR}/bin/python" -m pip install --quiet "${src}"
 
   ok "Python package installed"
