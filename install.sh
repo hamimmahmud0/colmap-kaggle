@@ -106,7 +106,6 @@ download_release() {
 
   log "Downloading ${tag} …"
   tmp_dir=$(mktemp -d -t dji-recon-install.XXXXXX)
-  trap "rm -rf '${tmp_dir}'" EXIT
 
   curl -fsSL "$tarball_url" -o "${tmp_dir}/${tag}.tar.gz" || fail "Download failed"
   tar -xzf "${tmp_dir}/${tag}.tar.gz" -C "$tmp_dir"
@@ -114,11 +113,13 @@ download_release() {
   local extracted
   extracted=$(find "$tmp_dir" -maxdepth 1 -type d -name "colmap-kaggle-*" | head -n1)
   if [[ -z "$extracted" ]]; then
+    rm -rf "$tmp_dir"
     fail "Failed to extract tarball (expected colmap-kaggle-* directory)"
   fi
 
-  # Only return the directory path — no other output on stdout
-  printf '%s' "$extracted"
+  # Return the source directory path and the tmp_dir (for cleanup later).
+  # The caller MUST use the returned tmp_dir to clean up.
+  printf '%s\n%s' "$extracted" "$tmp_dir"
 }
 
 # --- Python environment -----------------------------------------------------
@@ -236,11 +237,18 @@ main() {
   local tag
   tag=$(resolve_tag "${1:-}")
 
-  local src
-  src=$(download_release "$tag")
+  local src tmp_dir
+  # download_release returns two lines: source_dir + newline + tmp_dir
+  {
+    read -r src
+    read -r tmp_dir
+  } < <(download_release "$tag")
 
   setup_python "$src"
   setup_config "$src"
+
+  # Clean up extracted tarball
+  rm -rf "$tmp_dir"
 
   print_summary "$tag"
 }
