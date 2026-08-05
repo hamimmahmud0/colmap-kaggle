@@ -107,7 +107,10 @@ download_release() {
   log "Downloading ${tag} …"
   tmp_dir=$(mktemp -d -t dji-recon-install.XXXXXX)
 
-  curl -fsSL "$tarball_url" -o "${tmp_dir}/${tag}.tar.gz" || fail "Download failed"
+  # 10-minute timeout, retry twice
+  curl -fsSL --retry 2 --retry-max-time 600 --max-time 600 \
+    "$tarball_url" -o "${tmp_dir}/${tag}.tar.gz" || fail "Download failed after retries"
+
   tar -xzf "${tmp_dir}/${tag}.tar.gz" -C "$tmp_dir"
 
   local extracted
