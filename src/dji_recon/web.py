@@ -224,6 +224,7 @@ def create_app(config_path: Path) -> FastAPI:
         mega_email: str = Form(""),
         mega_password: str = Form(""),
         drive_token: str = Form(""),
+        json_overrides: str = Form(""),
     ) -> JSONResponse:
         if not authenticated(request):
             return JSONResponse({"error": "authentication required"}, 401)
@@ -246,6 +247,14 @@ def create_app(config_path: Path) -> FastAPI:
         )
         config["quality"]["medium_vram_gb"] = medium_vram_gb
         config["upload"].update({"backend": upload_backend, "destination": output_destination})
+        # Deep-merge JSON overrides for arbitrary config settings
+        if json_overrides.strip():
+            try:
+                overrides = json.loads(json_overrides)
+                from .config import deep_merge
+                config = deep_merge(config, overrides)
+            except json.JSONDecodeError as error:
+                return JSONResponse({"error": f"invalid json_overrides: {error}"}, 400)
         runtime_secrets = RuntimeSecrets(
             mega_email=mega_email or None,
             mega_password=mega_password or None,
@@ -267,6 +276,12 @@ def create_app(config_path: Path) -> FastAPI:
             return JSONResponse({"status": "uploading"}, 202)
         except RuntimeError as error:
             return JSONResponse({"error": str(error)}, 409)
+
+    @app.get("/api/config")
+    async def show_config(request: Request) -> JSONResponse:
+        if not authenticated(request):
+            return JSONResponse({"error": "authentication required"}, 401)
+        return JSONResponse(redact(state.base_config))
 
     @app.get("/api/preview/{stage}", response_model=None)
     async def preview_image(request: Request, stage: str):

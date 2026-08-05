@@ -30,6 +30,12 @@
         <button type="button" id="drive-help">Show Google Drive authorization steps</button>
         <pre id="drive-instructions" hidden></pre>
       </fieldset>
+      <fieldset><legend>Advanced</legend>
+        <button type="button" id="show-config">Show effective configuration</button>
+        <pre id="effective-config" hidden></pre>
+        <label>JSON overrides<textarea name="json_overrides" id="json-overrides" rows="6" placeholder='{"colmap":{"use_gpu":false},"mesh":{"poisson_trim":5},"previews":{"enabled":false}}'></textarea></label>
+        <p class="hint">Paste a partial JSON object to override any config key. Merged deeply into the base configuration.</p>
+      </fieldset>
       <p id="form-error" class="error"></p>
       <button type="submit" id="run-button">Start pipeline</button>
     </form>
