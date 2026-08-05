@@ -42,6 +42,7 @@ STAGES = [
     "align",
     "dense",
     "mesh",
+    "simplify_mesh",
     "texture",
     "variants",
     "validate",
@@ -142,6 +143,7 @@ class PipelineContext:
             "aligned": self.workspace / "aligned",
             "dense": self.workspace / "dense",
             "mesh": self.workspace / "meshes" / "reconstruction.ply",
+            "simplified_mesh": self.workspace / "meshes" / "reconstruction_decimated.ply",
             "textured": self.workspace / "meshes" / "textured" / "model.obj",
             "variants": self.workspace / "artifacts" / "variants",
             "packages": self.workspace / "artifacts" / "packages",
@@ -594,6 +596,42 @@ def _ply_vertex_count(path: Path) -> int:
         return 0
     return 0
 
+def _ply_face_count(path: Path) -> int:
+    """Return the face (triangle) count of a binary-little-endian PLY file."""
+    if not path.is_file():
+        return 0
+    try:
+        with path.open("rb") as stream:
+            for _ in range(1024):
+                line = stream.readline(4096)
+                if not line:
+                    break
+                if line.startswith(b"element face "):
+                    return int(line.split()[2])
+                if line.strip() == b"end_header":
+                    break
+    except (OSError, ValueError, IndexError):
+        return 0
+    return 0
+
+def _ply_face_count(path: Path) -> int:
+    """Return the face (triangle) count of a binary-little-endian PLY file."""
+    if not path.is_file():
+        return 0
+    try:
+        with path.open("rb") as stream:
+            for _ in range(1024):
+                line = stream.readline(4096)
+                if not line:
+                    break
+                if line.startswith(b"element face "):
+                    return int(line.split()[2])
+                if line.strip() == b"end_header":
+                    break
+    except (OSError, ValueError, IndexError):
+        return 0
+    return 0
+
 
 def _dense(ctx: PipelineContext) -> list[Path]:
     dense = ctx.path("dense")
@@ -630,6 +668,95 @@ def _mesh(ctx: PipelineContext) -> list[Path]:
     return [mesh]
 
 
+def _simplify_mesh(ctx: PipelineContext) -> list[Path]:
+    """Decimate the Poisson mesh before texturing so `texrecon` processes a manageable triangle count."""
+    source = ctx.path("mesh")
+    target = ctx.path("simplified_mesh")
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    simplify_config = ctx.config["mesh"].get("simplify", {})
+    target_triangles = int(simplify_config.get("target_triangles", 6_000_000))
+
+    source_triangles = _ply_face_count(source)
+    ctx.log(f"mesh input: {source_triangles:,} triangles")
+
+    if source_triangles <= 0:
+        raise PipelineError("cannot simplify an empty or invalid mesh")
+
+    if source_triangles <= target_triangles:
+        ctx.log(f"mesh already at or below target {target_triangles:,} triangles; symlinking")
+        if target.is_symlink() or target.exists():
+            target.unlink()
+        target.symlink_to(source.resolve())
+        return [target]
+
+    # Reuse a previously decimated mesh if it satisfies the target.
+    if target.is_file() and _ply_face_count(target) > 0:
+        target_tri_count = _ply_face_count(target)
+        if target_tri_count <= target_triangles:
+            ctx.log(
+                f"reusing decimated mesh ({target_tri_count:,} triangles ≤ {target_triangles:,} target)"
+            )
+            return [target]
+
+    blender = shutil.which("blender")
+    if not blender:
+        raise PipelineError("Blender is required for mesh simplification")
+
+    ctx.log(f"decimating {source_triangles:,} → ≤ {target_triangles:,} triangles with Blender")
+    script = _simplify_mesh_blender_script(source, target, target_triangles)
+    run_command([blender, "--background", "--python", str(script)], log=ctx.log)
+    script.unlink()
+
+    result_triangles = _ply_face_count(target)
+    ctx.log(f"decimated mesh: {result_triangles:,} triangles")
+    if result_triangles <= 0:
+        raise PipelineError("mesh decimation produced an empty or invalid file")
+    return [target]
+
+
+def _simplify_mesh_blender_script(source: Path, target: Path, target_triangles: int) -> Path:
+    """Write a temporary Blender Python script that decimates and exports a PLY mesh."""
+    script = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="blender_decimate_", delete=False, encoding="utf-8"
+    )
+    script.write(
+        f'''import bpy
+import sys
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.import_mesh.ply(filepath={str(source)!r})
+
+obj = bpy.context.active_object
+if obj is None or obj.type != "MESH":
+    print("ERROR: failed to import mesh", file=sys.stderr)
+    bpy.ops.wm.quit_blender()
+    sys.exit(1)
+
+current_faces = len(obj.data.polygons)
+print(f"Imported {{current_faces}} triangles")
+
+ratio = max(0.0001, min(1.0, {target_triangles} / current_faces))
+modifier = obj.modifiers.new(name="SimplifyMesh", type="DECIMATE")
+modifier.decimate_type = "COLLAPSE"
+modifier.ratio = ratio
+modifier.use_collapse_triangulate = True
+modifier.use_symmetry = False
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+bpy.ops.object.modifier_apply(modifier=modifier.name)
+
+after_faces = len(obj.data.polygons)
+print(f"Decimated to {{after_faces}} triangles (target: {target_triangles}, ratio: {{ratio:.6f}})")
+
+bpy.ops.export_mesh.ply(filepath={str(target)!r}, use_selection=False)
+bpy.ops.wm.quit_blender()
+'''
+    )
+    script.close()
+    return Path(script.name)
+
+
 def _texture(ctx: PipelineContext) -> list[Path]:
     if not shutil.which("texrecon"):
         raise PipelineError("texrecon is required for UV/texture generation; run scripts/install_kaggle.sh")
@@ -659,13 +786,21 @@ def _texture(ctx: PipelineContext) -> list[Path]:
     # relative image names embedded by COLMAP resolve directly in texrecon.
     dense = ctx.path("dense")
     nvm = dense / "images" / "scene.nvm"
+
+    # Prefer the decimated mesh when available; fall back to the raw Poisson mesh.
+    mesh_path = ctx.path("simplified_mesh")
+    if not mesh_path.is_file():
+        ctx.log("decimated mesh not found; falling back to raw Poisson mesh", "warning")
+        mesh_path = ctx.path("mesh")
+    ctx.log(f"texturing mesh with {_ply_face_count(mesh_path):,} triangles")
+
     _colmap(ctx, ["model_converter", "--input_path", str(dense / "sparse"), "--output_path", str(nvm), "--output_type", "NVM"])
     run_command(
         [
             "texrecon", f"--data_term={ctx.config['mesh'].get('texture_data_term', 'area')}",
             f"--outlier_removal={ctx.config['mesh'].get('texture_outlier_removal', 'gauss_clamping')}",
             "--num_threads=1",
-            str(nvm), str(ctx.path("mesh")), str(output_prefix),
+            str(nvm), str(mesh_path), str(output_prefix),
         ],
         cwd=dense / "images",
         log=ctx.log,
@@ -786,6 +921,7 @@ REAL_RUNNERS: dict[str, Callable[[PipelineContext], list[Path]]] = {
     "align": _align,
     "dense": _dense,
     "mesh": _mesh,
+    "simplify_mesh": _simplify_mesh,
     "texture": _texture,
     "variants": _variants,
     "validate": _validate,

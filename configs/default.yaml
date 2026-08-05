@@ -44,6 +44,9 @@ colmap:
 
 mesh:
   poisson_trim: 7
+  simplify:
+    target_triangles: 6000000
+    boundary_weight: 1.0
   texture_tool: texrecon
   texture_data_term: area
   texture_outlier_removal: gauss_clamping
