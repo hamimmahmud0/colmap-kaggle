@@ -51,6 +51,18 @@ mesh:
   texture_data_term: area
   texture_outlier_removal: gauss_clamping
 
+cleanup:
+  # Delete intermediates after each stage succeeds (20 GB budget).
+  # Set any key to false to keep that data for debugging.
+  after_convert: true       # delete DNGs after TIFF conversion
+  after_preflight: true     # delete capture/ TIFFs (keep JSON sidecars)
+  after_dense: true         # delete stereo/ depth maps (keep fused.ply)
+  after_mesh: true          # delete fused.ply (keep sparse/ + images/ for texturing)
+  after_simplify: true      # delete the 24M-tri Poisson mesh
+  after_texture: true       # delete decimated PLY + dense/ workspace
+  after_variants: true      # delete textured OBJ/MTL + atlases
+  after_package: true       # delete variant dirs after zipping
+
 quality:
   medium_vram_gb: 8
   center_at_origin: true

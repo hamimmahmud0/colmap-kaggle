@@ -202,6 +202,81 @@ def _record_outputs(outputs: list[Path]) -> list[dict[str, Any]]:
     return identities
 
 
+def _run_cleanup(ctx: PipelineContext, stage: str) -> None:
+    """Delete intermediate data after a stage completes to stay within the 20 GB budget."""
+    cleanup = ctx.config.get("cleanup", {})
+    if not cleanup:
+        return
+
+    def _safe_rm(path: Path) -> None:
+        if path.is_symlink():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        elif path.exists():
+            path.unlink()
+
+    def _safe_rm_glob(parent: Path, extensions: tuple[str, ...]) -> None:
+        if parent.exists():
+            for item in _files(parent, extensions):
+                _safe_rm(item)
+
+    if stage == "convert" and cleanup.get("after_convert"):
+        # Delete DNGs — TIFFs in capture/ are the new source of truth.
+        dngs = _files(ctx.path("input"), (".dng",))
+        for dng in dngs:
+            _safe_rm(dng)
+        ctx.log(f"cleanup: removed {len(dngs)} DNG files from input/")
+
+    elif stage == "preflight" and cleanup.get("after_preflight"):
+        # Delete TIFFs from capture/ — keep only JSON sidecars (GPS metadata).
+        tiffs = _files(ctx.path("capture"), (".tif", ".tiff"))
+        for tiff in tiffs:
+            _safe_rm(tiff)
+        ctx.log(f"cleanup: removed {len(tiffs)} TIFF files from capture/ (JSON sidecars preserved)")
+
+    elif stage == "dense" and cleanup.get("after_dense"):
+        # Delete stereo depth/normal maps — fused.ply survives for meshing.
+        stereo = ctx.path("dense") / "stereo"
+        if stereo.is_dir():
+            shutil.rmtree(stereo, ignore_errors=True)
+            ctx.log("cleanup: removed dense/stereo/ depth maps")
+
+    elif stage == "mesh" and cleanup.get("after_mesh"):
+        # Delete fused.ply — the Poisson mesh replaces it.
+        fused = ctx.path("dense") / "fused.ply"
+        _safe_rm(fused)
+        ctx.log("cleanup: removed dense/fused.ply")
+
+    elif stage == "simplify_mesh" and cleanup.get("after_simplify"):
+        # Delete the 24M-tri Poisson mesh — the decimated version replaces it.
+        _safe_rm(ctx.path("mesh"))
+        ctx.log("cleanup: removed raw Poisson mesh")
+
+    elif stage == "texture" and cleanup.get("after_texture"):
+        # Delete the decimated PLY — the textured OBJ/MTL are the final geometry.
+        _safe_rm(ctx.path("simplified_mesh"))
+        # Delete dense/ tree — no longer needed after texturing.
+        dense_dir = ctx.path("dense")
+        if dense_dir.is_dir():
+            shutil.rmtree(dense_dir, ignore_errors=True)
+            ctx.log("cleanup: removed dense/ workspace")
+
+    elif stage == "variants" and cleanup.get("after_variants"):
+        # Delete the large textured OBJ/MTL + texture atlases.
+        textured_dir = ctx.path("textured").parent
+        if textured_dir.is_dir():
+            shutil.rmtree(textured_dir, ignore_errors=True)
+            ctx.log("cleanup: removed textured output directory")
+
+    elif stage == "package" and cleanup.get("after_package"):
+        # Delete variant directories — the ZIP archives are the deliverable.
+        variants_dir = ctx.path("variants")
+        if variants_dir.is_dir():
+            shutil.rmtree(variants_dir, ignore_errors=True)
+            ctx.log("cleanup: removed variant directories")
+
+
 def _mock_stage(ctx: PipelineContext, stage: str) -> list[Path]:
     marker = ctx.meta_dir / "mock" / f"{stage}.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -614,24 +689,6 @@ def _ply_face_count(path: Path) -> int:
         return 0
     return 0
 
-def _ply_face_count(path: Path) -> int:
-    """Return the face (triangle) count of a binary-little-endian PLY file."""
-    if not path.is_file():
-        return 0
-    try:
-        with path.open("rb") as stream:
-            for _ in range(1024):
-                line = stream.readline(4096)
-                if not line:
-                    break
-                if line.startswith(b"element face "):
-                    return int(line.split()[2])
-                if line.strip() == b"end_header":
-                    break
-    except (OSError, ValueError, IndexError):
-        return 0
-    return 0
-
 
 def _dense(ctx: PipelineContext) -> list[Path]:
     dense = ctx.path("dense")
@@ -992,6 +1049,8 @@ def run_pipeline(
             )
             ctx.log(f"stage {record['status']} in {record['duration_seconds']:.3f}s")
             ctx.save()
+            if mode != "mock":
+                _run_cleanup(ctx, stage)
         except Exception as error:
             record.update({"status": "failed", "ended_at": utc_now(), "duration_seconds": round(time.monotonic() - started_clock, 3), "error": redact_text(str(error), ctx.secrets.values())})
             ctx.log(f"stage failed: {error}", "error")
