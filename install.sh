@@ -46,8 +46,8 @@ else
   RED='' GREEN='' YELLOW='' BOLD='' RESET=''
 fi
 
-log()   { printf "${BOLD}[dji-recon]${RESET} %s\n" "$*"; }
-ok()    { printf "${GREEN}[✓]${RESET} %s\n" "$*"; }
+log()   { printf "${BOLD}[dji-recon]${RESET} %s\n" "$*" >&2; }
+ok()    { printf "${GREEN}[✓]${RESET} %s\n" "$*" >&2; }
 warn()  { printf "${YELLOW}[!]${RESET} %s\n" "$*" >&2; }
 fail()  { printf "${RED}[✗]${RESET} %s\n" "$*" >&2; exit 1; }
 
@@ -108,7 +108,7 @@ download_release() {
   tmp_dir=$(mktemp -d -t dji-recon-install.XXXXXX)
   trap "rm -rf '${tmp_dir}'" EXIT
 
-  curl -fsSL "$tarball_url" -o "${tmp_dir}/${tag}.tar.gz"
+  curl -fsSL "$tarball_url" -o "${tmp_dir}/${tag}.tar.gz" || fail "Download failed"
   tar -xzf "${tmp_dir}/${tag}.tar.gz" -C "$tmp_dir"
 
   local extracted
@@ -116,7 +116,9 @@ download_release() {
   if [[ -z "$extracted" ]]; then
     fail "Failed to extract tarball (expected colmap-kaggle-* directory)"
   fi
-  echo "$extracted"
+
+  # Only return the directory path — no other output on stdout
+  printf '%s' "$extracted"
 }
 
 # --- Python environment -----------------------------------------------------
