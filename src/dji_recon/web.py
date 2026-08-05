@@ -13,7 +13,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -191,6 +191,11 @@ def create_app(config_path: Path) -> FastAPI:
     async def status(request: Request) -> JSONResponse:
         if not authenticated(request):
             return JSONResponse({"error": "authentication required"}, 401)
+        previews: list[str] = []
+        if state._run_config:
+            previews_dir = Path(state._run_config.get("workspace", "")) / "previews"
+            if previews_dir.is_dir():
+                previews = sorted(p.stem for p in previews_dir.glob("*.png") if p.is_file())
         return JSONResponse(
             {
                 "status": state.status,
@@ -200,6 +205,7 @@ def create_app(config_path: Path) -> FastAPI:
                 "error": state.last_error,
                 "pending_upload": state.pending_upload,
                 "public_url": state.public_url,
+                "previews": previews,
                 "timestamp": utc_now(),
             }
         )
@@ -261,6 +267,18 @@ def create_app(config_path: Path) -> FastAPI:
             return JSONResponse({"status": "uploading"}, 202)
         except RuntimeError as error:
             return JSONResponse({"error": str(error)}, 409)
+
+    @app.get("/api/preview/{stage}", response_model=None)
+    async def preview_image(request: Request, stage: str):
+        if not authenticated(request):
+            return JSONResponse({"error": "authentication required"}, 401)
+        if state._run_config is None:
+            return JSONResponse({"error": "no pipeline run config available"}, 404)
+        workspace = Path(state._run_config.get("workspace", ""))
+        preview_file = workspace / "previews" / f"{stage}.png"
+        if preview_file.is_file():
+            return FileResponse(preview_file, media_type="image/png")
+        return JSONResponse({"error": f"no preview for stage {stage!r}"}, 404)
 
     @app.get("/api/rclone/drive-instructions")
     async def drive_instructions(request: Request) -> JSONResponse:

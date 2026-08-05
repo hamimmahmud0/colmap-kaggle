@@ -202,21 +202,119 @@ def _record_outputs(outputs: list[Path]) -> list[dict[str, Any]]:
     return identities
 
 
+def _render_preview(ctx: PipelineContext, stage: str, geometry: Path) -> Path | None:
+    """Render a thumbnail PNG of a PLY or OBJ file using Blender (headless)."""
+    if not ctx.config.get("previews", {}).get("enabled", False):
+        return None
+    blender = shutil.which("blender")
+    if not blender:
+        ctx.log("Blender not available for preview generation; install with 'apt install blender'", "warning")
+        return None
+    preview_dir = ctx.workspace / "previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = preview_dir / f"{stage}.png"
+    if preview_path.is_file() and preview_path.stat().st_size > 0:
+        ctx.log(f"reusing existing preview for {stage}")
+        return preview_path
+    ctx.log(f"rendering {stage} preview thumbnail from {geometry.name}")
+    script = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="blender_preview_", delete=False, encoding="utf-8"
+    )
+    script.write(
+        f"""import bpy, sys, math
+from pathlib import Path
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+suffix = Path({str(geometry)!r}).suffix.lower()
+if suffix == ".ply":
+    bpy.ops.import_mesh.ply(filepath={str(geometry)!r})
+elif suffix == ".obj":
+    bpy.ops.import_scene.obj(filepath={str(geometry)!r})
+else:
+    print(f"ERROR: unsupported geometry format {{suffix}}", file=sys.stderr)
+    bpy.ops.wm.quit_blender()
+    sys.exit(1)
+
+# Join all mesh objects and frame the view
+bpy.ops.object.select_all(action="SELECT")
+if len(bpy.context.selected_objects) > 1:
+    bpy.context.view_layer.objects.active = bpy.context.selected_objects[0]
+    bpy.ops.object.join()
+
+obj = bpy.context.active_object
+if obj is None or obj.type != "MESH":
+    print("ERROR: no mesh imported", file=sys.stderr)
+    bpy.ops.wm.quit_blender()
+    sys.exit(1)
+
+# Centre and normalise transform
+bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="BOUNDS")
+obj.location = (0, 0, 0)
+obj.rotation_euler = (0, 0, 0)
+
+# Add a camera
+bpy.ops.object.camera_add(location=(0, -3, 1.5))
+cam = bpy.context.active_object
+cam.rotation_euler = (math.radians(75), 0, 0)
+bpy.context.scene.camera = cam
+
+# Three-point lighting
+bpy.ops.object.light_add(type="SUN", location=(4, 4, 8))
+bpy.context.active_object.data.energy = 3
+bpy.ops.object.light_add(type="SUN", location=(-3, -2, 4))
+bpy.context.active_object.data.energy = 1.5
+bpy.ops.object.light_add(type="SUN", location=(0, -4, 1))
+bpy.context.active_object.data.energy = 1
+
+# Render settings
+scene = bpy.context.scene
+scene.render.resolution_x = 800
+scene.render.resolution_y = 600
+scene.render.image_settings.file_format = "PNG"
+scene.render.filepath = {str(preview_path)!r}
+scene.render.engine = "BLENDER_EEVEE"
+bpy.ops.render.render(write_still=True)
+bpy.ops.wm.quit_blender()
+"""
+    )
+    script.close()
+    try:
+        run_command([blender, "--background", "--python", str(script)], log=ctx.log)
+    except CommandError:
+        ctx.log(f"preview render failed for {stage}", "warning")
+        _safe_rm(preview_path)
+        return None
+    finally:
+        _safe_rm(Path(script.name))
+    if preview_path.is_file() and preview_path.stat().st_size > 0:
+        ctx.log(f"preview saved: {preview_path}")
+        return preview_path
+    return None
+
+
+def _safe_rm(path: Path) -> None:
+    """Delete a path safely, handling symlinks, directories, and missing files."""
+    if path.is_symlink():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    elif path.exists():
+        path.unlink()
+
+
+def _safe_rm_glob(parent: Path, extensions: tuple[str, ...]) -> None:
+    """Delete all files matching extensions under parent directory."""
+    if parent.exists():
+        for item in _files(parent, extensions):
+            _safe_rm(item)
+
+
 def _run_cleanup(ctx: PipelineContext, stage: str) -> None:
     """Delete intermediate data after a stage completes to stay within the 20 GB budget."""
     cleanup = ctx.config.get("cleanup", {})
     if not cleanup:
         return
-
-    def _safe_rm(path: Path) -> None:
-        if path.is_symlink():
-            path.unlink()
-        elif path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-        elif path.exists():
-            path.unlink()
-
-    def _safe_rm_glob(parent: Path, extensions: tuple[str, ...]) -> None:
         if parent.exists():
             for item in _files(parent, extensions):
                 _safe_rm(item)
@@ -710,7 +808,8 @@ def _dense(ctx: PipelineContext) -> list[Path]:
     minimum_points = int(ctx.config["colmap"].get("min_dense_points", 100))
     if fused_points < minimum_points:
         raise PipelineError(f"dense fusion produced {fused_points} points; required >= {minimum_points}")
-    return [dense, fused]
+    preview = _render_preview(ctx, "dense", fused)
+    return [dense, fused, *([preview] if preview else [])]
 
 
 def _mesh(ctx: PipelineContext) -> list[Path]:
@@ -722,7 +821,8 @@ def _mesh(ctx: PipelineContext) -> list[Path]:
     _colmap(ctx, ["poisson_mesher", "--input_path", str(ctx.path("dense") / "fused.ply"), "--output_path", str(mesh), "--PoissonMeshing.trim", str(ctx.config["mesh"].get("poisson_trim", 7))])
     if _ply_vertex_count(mesh) <= 0:
         raise PipelineError("mesh output is missing or contains no vertices")
-    return [mesh]
+    preview = _render_preview(ctx, "mesh", mesh)
+    return [mesh, *([preview] if preview else [])]
 
 
 def _simplify_mesh(ctx: PipelineContext) -> list[Path]:
@@ -769,7 +869,8 @@ def _simplify_mesh(ctx: PipelineContext) -> list[Path]:
     ctx.log(f"decimated mesh: {result_triangles:,} triangles")
     if result_triangles <= 0:
         raise PipelineError("mesh decimation produced an empty or invalid file")
-    return [target]
+    preview = _render_preview(ctx, "simplify_mesh", target)
+    return [target, *([preview] if preview else [])]
 
 
 def _simplify_mesh_blender_script(source: Path, target: Path, target_triangles: int) -> Path:
@@ -866,7 +967,8 @@ def _texture(ctx: PipelineContext) -> list[Path]:
         raise PipelineError("texrecon did not create a complete OBJ, MTL, and texture-map set")
     if expected != ctx.path("textured"):
         shutil.copy2(expected, ctx.path("textured"))
-    return [output_prefix.parent]
+    preview = _render_preview(ctx, "texture", ctx.path("textured"))
+    return [output_prefix.parent, *([preview] if preview else [])]
 
 
 def _variants(ctx: PipelineContext) -> list[Path]:

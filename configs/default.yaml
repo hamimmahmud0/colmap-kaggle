@@ -73,6 +73,11 @@ upload:
   destination: dji-recon
   require_confirmation: true
 
+previews:
+  # Render thumbnail PNGs after each major stage for the web UI gallery.
+  # Set enabled=false to skip Blender render passes and save time.
+  enabled: true
+
 web:
   bind_host: 127.0.0.1
   port: 7860
