@@ -557,26 +557,63 @@ def _append_options(args: list[str], options: dict[str, Any]) -> list[str]:
 
 def _feature_extract(ctx: PipelineContext) -> list[Path]:
     mode = ctx.config["capture_modes"][ctx.config["capture_mode"]]
+    gpu = _gpu_enabled(ctx)
     args = [
         "feature_extractor",
         "--database_path", str(ctx.path("database")),
         "--image_path", str(ctx.path("working")),
         "--ImageReader.camera_model", ctx.config["colmap"].get("camera_model", "OPENCV"),
         "--ImageReader.single_camera", "1" if mode.get("single_camera", True) else "0",
-        "--SiftExtraction.use_gpu", "1" if _gpu_enabled(ctx) else "0",
+        "--SiftExtraction.use_gpu", "1" if gpu else "0",
     ]
     _append_options(args, ctx.config["colmap"].get("options", {}).get("feature_extractor", {}))
-    _colmap(ctx, args)
+    try:
+        _colmap(ctx, args)
+    except CommandError:
+        if not gpu:
+            raise
+        ctx.log("GPU feature extraction failed; retrying with CPU", "warning")
+        for i, token in enumerate(args):
+            if token.startswith("--SiftExtraction.use_gpu"):
+                args[i] = "--SiftExtraction.use_gpu=0"
+                break
+        _colmap(ctx, args)
     return [ctx.path("database")]
 
 
 def _match(ctx: PipelineContext) -> list[Path]:
     mode = ctx.config["capture_modes"][ctx.config["capture_mode"]]
     matcher = mode.get("matcher", "exhaustive")
-    args = [f"{matcher}_matcher", "--database_path", str(ctx.path("database")), "--SiftMatching.use_gpu", "1" if _gpu_enabled(ctx) else "0"]
+    gpu = _gpu_enabled(ctx)
+    args = [
+        f"{matcher}_matcher", "--database_path", str(ctx.path("database")),
+        "--SiftMatching.use_gpu", "1" if gpu else "0",
+        # Default max_num_matches prevents SiftGPU abort when the value is 0.
+        "--SiftMatching.max_num_matches", "32768",
+    ]
     _append_options(args, mode.get("options", {}))
     _append_options(args, ctx.config["colmap"].get("options", {}).get("matcher", {}))
-    _colmap(ctx, args)
+
+    try:
+        _colmap(ctx, args)
+    except CommandError as first:
+        if not gpu:
+            raise
+        # SiftGPU can crash on malformed or incompatible configs.
+        # Retry with CPU matching which is more robust.
+        ctx.log("GPU matching failed; retrying with CPU matching", "warning")
+        for i, token in enumerate(args):
+            if token.startswith("--SiftMatching.use_gpu"):
+                args[i] = "--SiftMatching.use_gpu=0"
+                break
+        # Explicitly set GPU index to -1 to avoid any GPU path.
+        args.append("--SiftMatching.gpu_index=-1")
+        try:
+            _colmap(ctx, args)
+        except CommandError:
+            ctx.log(f"CPU matching also failed: {first}", "error")
+            raise first
+
     return [ctx.path("database")]
 
 
