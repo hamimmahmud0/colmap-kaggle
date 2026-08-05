@@ -58,6 +58,19 @@ check_prerequisites() {
   log "Checking prerequisites …"
   has curl    || fail "curl is required. Install with: sudo apt install curl"
   has python3 || fail "python3 >= 3.10 is required"
+
+  # Ensure python3-venv / ensurepip is available
+  if ! python3 -m venv --help >/dev/null 2>&1; then
+    warn "python3-venv is not installed – attempting to install it …"
+    if has apt-get && has sudo; then
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq python3-venv || fail "could not install python3-venv via apt"
+      ok "python3-venv installed"
+    else
+      fail "python3-venv is required but cannot be installed automatically (no apt/sudo)"
+    fi
+  fi
+
   has git     || warn "git is not installed – some features may be unavailable"
   has cmake   || warn "cmake is not installed – COLMAP / texrecon will need system packages"
   ok "Prerequisites satisfied"
@@ -113,11 +126,35 @@ setup_python() {
   log "Setting up Python environment …"
   mkdir -p "$INSTALL_DIR"
 
-  # Create venv
+  # Create venv – `python3 -m venv` needs python3-venv + ensurepip.
+  # On minimal images (Docker, WSL), one or both may be absent.
   rm -rf "$VENV_DIR"
-  python3 -m venv "$VENV_DIR"
 
-  # Upgrade pip + install
+  if python3 -m venv "$VENV_DIR" 2>/dev/null; then
+    : # created successfully
+  else
+    warn "python3 -m venv failed – checking for python3-venv / python3-pip …"
+    if has apt-get && has sudo; then
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq python3-venv python3-pip 2>/dev/null || true
+    fi
+
+    # Retry
+    if ! python3 -m venv "$VENV_DIR" 2>/dev/null; then
+      # Last resort: bootstrap pip via get-pip.py
+      warn "Bootstrapping pip via get-pip.py …"
+      local tmp_pip
+      tmp_pip=$(mktemp -t get-pip.XXXXXX.py)
+      curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$tmp_pip"
+      python3 "$tmp_pip" --user --quiet || fail "pip bootstrap failed"
+      # Recreate venv without pip, then install pip into it
+      python3 -m venv --without-pip "$VENV_DIR"
+      "${VENV_DIR}/bin/python" "$tmp_pip" --quiet || fail "pip install into venv failed"
+      rm -f "$tmp_pip"
+    fi
+  fi
+
+  # Upgrade pip + install the project
   "${VENV_DIR}/bin/python" -m pip install --quiet --upgrade pip
   "${VENV_DIR}/bin/python" -m pip install --quiet "${src}"
 
