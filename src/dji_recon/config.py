@@ -50,14 +50,20 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def apply_environment(config: dict[str, Any]) -> None:
     mappings = {
+        "WORKSPACE": (None, "workspace"),
         "INPUT_FOLDER_URL": ("input", "url"),
         "OUTPUT_REMOTE": ("upload", "remote"),
         "TRANSPORT_HOST": ("web", "transport_host"),
     }
     for variable, path in mappings.items():
         value = os.environ.get(variable)
-        if value:
-            config.setdefault(path[0], {})[path[1]] = value
+        if not value:
+            continue
+        section, key = path
+        if section is None:
+            config[key] = value
+        else:
+            config.setdefault(section, {})[key] = value
 
 
 def validate_config(config: dict[str, Any]) -> None:

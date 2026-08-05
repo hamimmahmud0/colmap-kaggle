@@ -14,6 +14,7 @@ from .util import redact
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="dji-recon", description="Reproducible DJI photogrammetry pipeline")
     result.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
+    result.add_argument("--workspace", type=Path, default=None, help="override the workspace directory (e.g. /tmp/recon)")
     result.add_argument("--from-stage", choices=STAGES)
     result.add_argument("--to-stage", choices=STAGES)
     result.add_argument("--force-stage", choices=STAGES, action="append", default=[])
@@ -26,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         config = load_config(args.config)
+        if args.workspace is not None:
+            config["workspace"] = str(args.workspace)
         if args.print_resources:
             print(json.dumps(redact(detect_resources(Path(config["workspace"]).resolve())), indent=2))
             return 0
