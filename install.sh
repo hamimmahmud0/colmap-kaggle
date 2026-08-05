@@ -150,6 +150,17 @@ setup_config() {
     cp "${src_config}" "${dst_config}"
     ok "Config copied to ${dst_config}"
   fi
+
+  # Also copy referenced profile files (capture_modes, quality_profiles)
+  local extra
+  for extra in capture_modes.yaml quality_profiles.yaml; do
+    local src_extra="${src_dir}/configs/${extra}"
+    local dst_extra="${CONFIG_DIR}/${extra}"
+    if [[ -f "${src_extra}" && ! -f "${dst_extra}" ]]; then
+      cp "${src_extra}" "${dst_extra}"
+      ok "${extra} copied to ${dst_extra}"
+    fi
+  done
 }
 
 # --- summary ----------------------------------------------------------------

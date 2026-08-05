@@ -622,7 +622,23 @@ def _sparse(ctx: PipelineContext) -> list[Path]:
             f"required >= {minimum_images} images, >= {minimum_ratio:.0%}, >= {minimum_points} points"
         )
     (ctx.meta_dir / "selected-sparse-model.txt").write_text(str(selected), encoding="utf-8")
-    return [selected, ctx.meta_dir / "selected-sparse-model.txt", report]
+
+    # Export sparse point cloud as PLY for preview rendering
+    sparse_ply = ctx.meta_dir / "sparse-points.ply"
+    if not sparse_ply.is_file():
+        try:
+            _colmap(ctx, ["model_converter", "--input_path", str(selected), "--output_path", str(sparse_ply), "--output_type", "PLY"])
+        except CommandError:
+            ctx.log("sparse PLY export failed; skipping sparse preview", "warning")
+            sparse_ply = None
+    else:
+        ctx.log("reusing existing sparse PLY export")
+
+    preview = _render_preview(ctx, "sparse", sparse_ply) if sparse_ply and sparse_ply.is_file() else None
+    outputs = [selected, ctx.meta_dir / "selected-sparse-model.txt", report]
+    if preview:
+        outputs.append(preview)
+    return outputs
 
 
 def _selected_sparse(ctx: PipelineContext) -> Path:
