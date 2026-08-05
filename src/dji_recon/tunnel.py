@@ -145,6 +145,9 @@ class PublicTunnel:
             line = self.process.stdout.readline()
             if not line and self.process.poll() is not None:
                 break
+            clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+            if clean:
+                self.log(clean)
             if match := pattern.search(line):
                 self.public_url = match.group(0)
                 self._cloudflare_worker_pids.update(self._find_cloudflare_workers())
